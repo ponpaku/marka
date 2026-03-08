@@ -921,7 +921,6 @@ function handleListIndent(e) {
       }
       // <br> continuation line: apply same shift as preceding list marker line
       if (lastShift > 0) {
-        if (i === 0) cursorDelta = lastShift;
         return " ".repeat(lastShift) + line;
       }
       return line;
