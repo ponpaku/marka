@@ -768,6 +768,7 @@ function handleListIndent(e) {
     const p = parseListLine(l);
     return p && p.indentLen < min ? p.indentLen : min;
   }, Infinity);
+  if (!isFinite(baseIndent)) return false; // no list lines in initial block
 
   // Expand downward to include child list items (indent > baseIndent) and <br> continuation lines
   let lastLineIndex = value.substring(0, blockEnd).split("\n").length - 1;
@@ -882,7 +883,6 @@ function handleListIndent(e) {
       // <br> continuation line: apply same shift as preceding list marker line
       if (lastShift < 0) {
         const stripped = line.substring(Math.min(-lastShift, line.search(/\S|$/)));
-        if (i === 0) cursorDelta = lastShift;
         return stripped;
       }
       return line;
