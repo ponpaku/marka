@@ -724,7 +724,7 @@ textarea {
 #sidebar-recent-area .sidebar-section-body {
     flex: 1;
     min-height: 0;
-    overflow-y: auto;
+    overflow: hidden;
 }
 
 /* Section: collapsible header + body */

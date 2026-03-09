@@ -15,6 +15,7 @@ const RECENT_HEIGHT_MIN = 60;
 
 let tocDebounceTimer = null;
 let deps = null;
+let recentResizeObserver = null;
 
 // --- Public API ---
 
@@ -59,7 +60,7 @@ export function addToRecentFiles(filePath) {
   if (recents.length > RECENT_MAX) recents = recents.slice(0, RECENT_MAX);
   localStorage.setItem(RECENT_KEY, JSON.stringify(recents));
   const recentBody = document.getElementById("recent-section-body");
-  if (recentBody) renderRecentBody(recentBody);
+  if (recentBody) requestAnimationFrame(() => renderRecentBody(recentBody));
 }
 
 // --- Internal: Files panel ---
@@ -132,9 +133,19 @@ function renderFilesPanel() {
     onToggle: (collapsed) => localStorage.setItem(RECENT_COLLAPSED_KEY, String(collapsed)),
   });
   recentSection.body.id = "recent-section-body";
-  renderRecentBody(recentSection.body);
   recentArea.appendChild(recentSection.el);
   panel.appendChild(recentArea);
+
+  // Initial render after layout, then observe for size changes
+  requestAnimationFrame(() => {
+    renderRecentBody(recentSection.body);
+    if (recentResizeObserver) recentResizeObserver.disconnect();
+    recentResizeObserver = new ResizeObserver(() => {
+      const body = document.getElementById("recent-section-body");
+      if (body) renderRecentBody(body);
+    });
+    recentResizeObserver.observe(recentSection.body);
+  });
 }
 
 function buildFolderSection(folderPath, parentName = null) {
@@ -253,9 +264,31 @@ function createSection({ id, title, subtitle = null, collapsed, actions = [], on
 
 // --- Recent files ---
 
+function buildRecentItem(filePath) {
+  const btn = document.createElement("button");
+  btn.className = "recent-file-item";
+  if (deps && deps.getState && deps.getState().currentPath === filePath) {
+    btn.classList.add("active");
+  }
+  const name = document.createElement("span");
+  name.className = "recent-file-name";
+  name.textContent = filePath.split(/[\\/]/).pop();
+  const parts = filePath.split(/[\\/]/);
+  const dir = document.createElement("span");
+  dir.className = "recent-file-dir";
+  dir.textContent = parts.length > 1 ? parts[parts.length - 2] : "";
+  dir.title = filePath;
+  btn.appendChild(name);
+  btn.appendChild(dir);
+  btn.title = filePath;
+  btn.addEventListener("click", () => { if (deps && deps.openFile) deps.openFile(filePath); });
+  return btn;
+}
+
 function renderRecentBody(container) {
   container.innerHTML = "";
   const recents = loadRecentFiles();
+
   if (recents.length === 0) {
     const msg = document.createElement("div");
     msg.className = "sidebar-empty-msg";
@@ -263,28 +296,22 @@ function renderRecentBody(container) {
     container.appendChild(msg);
     return;
   }
+
+  // Render all items first to measure
   for (const filePath of recents) {
-    const btn = document.createElement("button");
-    btn.className = "recent-file-item";
-    if (deps && deps.getState && deps.getState().currentPath === filePath) {
-      btn.classList.add("active");
+    container.appendChild(buildRecentItem(filePath));
+  }
+
+  // Trim to fit container height
+  const containerH = container.getBoundingClientRect().height;
+  if (containerH > 0 && container.firstElementChild) {
+    const itemH = container.firstElementChild.getBoundingClientRect().height;
+    if (itemH > 0) {
+      const maxItems = Math.max(1, Math.floor(containerH / itemH));
+      while (container.children.length > maxItems) {
+        container.removeChild(container.lastChild);
+      }
     }
-
-    const name = document.createElement("span");
-    name.className = "recent-file-name";
-    name.textContent = filePath.split(/[\\/]/).pop();
-
-    const parts = filePath.split(/[\\/]/);
-    const dir = document.createElement("span");
-    dir.className = "recent-file-dir";
-    dir.textContent = parts.length > 1 ? parts[parts.length - 2] : "";
-    dir.title = filePath;
-
-    btn.appendChild(name);
-    btn.appendChild(dir);
-    btn.title = filePath;
-    btn.addEventListener("click", () => { if (deps && deps.openFile) deps.openFile(filePath); });
-    container.appendChild(btn);
   }
 }
 
