@@ -12,6 +12,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import { resolvePreviewImages } from "./image-resolver.js";
 import { startWatching, stopWatching, suppressNextChange, clearSuppression, setExternalChangeHandler } from "./file-watcher.js";
+import { initSidebar, updateTOC, addToRecentFiles } from "./sidebar.js";
 import {
   findListContext,
   findParentListItem,
@@ -31,6 +32,7 @@ const preview = document.getElementById("preview-pane");
 const status = document.getElementById("status");
 const helpToggle = document.getElementById("help-toggle");
 const helpPanel = document.getElementById("help-panel");
+const btnNew = document.getElementById("btn-new");
 const btnOpen = document.getElementById("btn-open");
 const btnSave = document.getElementById("btn-save");
 const btnSaveAs = document.getElementById("btn-save-as");
@@ -41,6 +43,7 @@ const exportDocxBtn = document.getElementById("export-docx");
 const exportTxtBtn = document.getElementById("export-txt");
 const exportPdfBtn = document.getElementById("export-pdf");
 const exportHtmlBtn = document.getElementById("export-html");
+const exportPrintBtn = document.getElementById("export-print");
 
 // --- App State ---
 export const state = {
@@ -197,6 +200,7 @@ export function updatePreview() {
     return `<input type="checkbox" data-index="${cbIndex++}"${checked ? " checked" : ""}>`;
   });
   preview.innerHTML = html;
+  updateTOC(editor.value);
 }
 
 // --- Status ---
@@ -1098,6 +1102,33 @@ function handleEnterKey(e) {
   }
 }
 
+// --- New File ---
+async function handleNew() {
+  if (state.dirty) {
+    const discard = await ask(t("new.confirmMessage"), {
+      title: t("new.confirmTitle"),
+      kind: "warning",
+      okLabel: t("new.ok"),
+      cancelLabel: t("new.cancel"),
+    });
+    if (!discard) return;
+  }
+  await stopWatching();
+  editor.value = "";
+  state.currentPath = null;
+  state.lastSavedAt = null;
+  updatePreview();
+  resetEditorHistory();
+  setCleanValue("");
+  setStatus(t("status.ready"));
+}
+
+// --- Print ---
+function handlePrint() {
+  exportDropdown.classList.remove("open");
+  window.print();
+}
+
 // --- File Operations ---
 function updateTitle() {
   const filename = state.currentPath
@@ -1118,6 +1149,7 @@ async function handleOpen() {
     resetEditorHistory();
     setCleanValue(result.text);
     setStatus(t("status.opened", result.path.split(/[\\/]/).pop()));
+    addToRecentFiles(result.path);
     await startWatching(result.path);
   } catch (err) {
     console.error("Open failed:", err);
@@ -1173,6 +1205,7 @@ async function handleSaveAs() {
 }
 
 // --- Button Handlers ---
+btnNew.addEventListener("click", handleNew);
 btnOpen.addEventListener("click", handleOpen);
 btnSave.addEventListener("click", handleSave);
 btnSaveAs.addEventListener("click", handleSaveAs);
@@ -1232,6 +1265,7 @@ async function handleExportHtml() {
 
 exportPdfBtn.addEventListener("click", handleExportPdf);
 exportHtmlBtn.addEventListener("click", handleExportHtml);
+exportPrintBtn.addEventListener("click", handlePrint);
 
 // --- Keyboard Event Handler ---
 editor.addEventListener("keydown", (e) => {
@@ -1412,6 +1446,7 @@ async function openFileFromPath(filePath) {
     resetEditorHistory();
     setCleanValue(text);
     setStatus(t("status.opened", filePath.split(/[\\/]/).pop()));
+    addToRecentFiles(filePath);
     await startWatching(filePath);
   } catch (err) {
     console.error("Failed to open file from path:", err);
@@ -1430,6 +1465,24 @@ async function init() {
   renderHelp();
   loadSavedStyle();
   initPreviewStylePanel();
+
+  // Initialize sidebar with deps for file opening
+  initSidebar({
+    getEditor: () => editor,
+    getState: () => state,
+    openFile: async (filePath) => {
+      if (state.dirty) {
+        const discard = await ask(t("new.confirmMessage"), {
+          title: t("new.confirmTitle"),
+          kind: "warning",
+          okLabel: t("new.ok"),
+          cancelLabel: t("new.cancel"),
+        });
+        if (!discard) return;
+      }
+      await openFileFromPath(filePath);
+    },
+  });
 
   const savedTheme = localStorage.getItem("sokki-theme") || "light";
   applyTheme(savedTheme);

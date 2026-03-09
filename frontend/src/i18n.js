@@ -1,10 +1,13 @@
 const dictionaries = {
   en: {
     // header buttons
+    "btn.new": "New",
     "btn.open": "Open",
     "btn.save": "Save",
     "btn.saveAs": "Save As",
     "btn.themeToggle": "Toggle theme",
+    "btn.sidebarToggle": "Sidebar",
+    "sidebar.toggleTitle": "Toggle Sidebar",
     // editor
     "editor.placeholder": "Type here...",
     // status
@@ -30,6 +33,19 @@ const dictionaries = {
     "export.plainText": "Plain Text (.txt)",
     "export.pdf": "PDF",
     "export.html": "HTML",
+    "export.print": "Print",
+    // new file dialog
+    "new.confirmTitle": "Discard Changes?",
+    "new.confirmMessage": "You have unsaved changes. Discard and create a new file?",
+    "new.ok": "Discard and New",
+    "new.cancel": "Cancel",
+    // sidebar
+    "sidebar.files": "Files",
+    "sidebar.toc": "Table of Contents",
+    "sidebar.openFolder": "Open Folder",
+    "sidebar.recentFiles": "Recent Files",
+    "sidebar.noRecent": "(none)",
+    "toc.empty": "No headings",
     "status.exported": "Exported: {0}",
     "status.exportFailed": "Export failed",
     // export modal
@@ -121,10 +137,13 @@ const dictionaries = {
   },
   ja: {
     // header buttons
+    "btn.new": "新規",
     "btn.open": "開く",
     "btn.save": "保存",
     "btn.saveAs": "名前を付けて保存",
     "btn.themeToggle": "テーマ切替",
+    "btn.sidebarToggle": "サイドバー",
+    "sidebar.toggleTitle": "サイドバーを切替",
     // editor
     "editor.placeholder": "ここに入力...",
     // status
@@ -150,6 +169,19 @@ const dictionaries = {
     "export.plainText": "プレーンテキスト (.txt)",
     "export.pdf": "PDF",
     "export.html": "HTML",
+    "export.print": "印刷",
+    // new file dialog
+    "new.confirmTitle": "変更を破棄しますか？",
+    "new.confirmMessage": "未保存の変更があります。破棄して新規作成しますか？",
+    "new.ok": "破棄して新規作成",
+    "new.cancel": "キャンセル",
+    // sidebar
+    "sidebar.files": "ファイル",
+    "sidebar.toc": "目次",
+    "sidebar.openFolder": "フォルダを開く",
+    "sidebar.recentFiles": "最近開いたファイル",
+    "sidebar.noRecent": "（なし）",
+    "toc.empty": "見出しがありません",
     "status.exported": "書き出しました: {0}",
     "status.exportFailed": "書き出しに失敗しました",
     // export modal
