@@ -930,6 +930,12 @@ textarea {
 .toc-h6 { padding-left: 48px; }
 
 /* --- Print Media --- */
+
+/* margin: 0 on @page removes the browser-generated header/footer area
+   (which would otherwise show the app URL like "tauri://localhost").
+   Content padding is applied to #preview-pane instead. */
+@page { margin: 0; }
+
 @media print {
     header,
     #sidebar,
@@ -937,7 +943,8 @@ textarea {
     #divider,
     #help-toggle,
     #help-panel,
-    .export-dropdown {
+    .export-dropdown,
+    #preview-style-toggle {
         display: none !important;
     }
     .app-body,
@@ -954,7 +961,37 @@ textarea {
     }
     #preview-pane {
         overflow: visible !important;
-        padding-bottom: 0 !important;
+        /* Compensate for the zeroed @page margin */
+        padding: 15mm !important;
+        box-sizing: border-box !important;
     }
-    #preview-style-toggle { display: none !important; }
+
+    /* Force light colors regardless of dark/light theme */
+    #preview-pane,
+    #preview-pane * {
+        color: #1a1a1a !important;
+        background-color: transparent !important;
+        border-color: #aaa !important;
+    }
+    #preview-pane pre,
+    #preview-pane code {
+        background-color: #f4f4f4 !important;
+        color: #1a1a1a !important;
+        border-color: #ddd !important;
+    }
+    #preview-pane blockquote {
+        background-color: #f9f9f9 !important;
+        border-left-color: #888 !important;
+        color: #333 !important;
+    }
+    #preview-pane a {
+        color: #0057b8 !important;
+    }
+    #preview-pane h1,
+    #preview-pane h2 {
+        border-bottom-color: #ccc !important;
+    }
+    #preview-pane table th {
+        background-color: #f0f0f0 !important;
+    }
 }
