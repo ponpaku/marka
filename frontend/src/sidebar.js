@@ -64,6 +64,10 @@ export function addToRecentFiles(filePath) {
 export async function renderFileTree(folderPath) {
   const treeRoot = document.getElementById("workspace-tree-root");
   if (!treeRoot) return;
+  await loadTreeInto(treeRoot, folderPath);
+}
+
+async function loadTreeInto(treeRoot, folderPath) {
   treeRoot.innerHTML = '<div class="sidebar-empty-msg">読み込み中...</div>';
   if (!folderPath) { treeRoot.innerHTML = ""; return; }
   try {
@@ -76,7 +80,7 @@ export async function renderFileTree(folderPath) {
     treeRoot.appendChild(renderTreeNodes(tree));
   } catch (err) {
     console.error("renderFileTree failed:", err);
-    treeRoot.innerHTML = `<div class="sidebar-empty-msg">${err}</div>`;
+    treeRoot.innerHTML = `<div class="sidebar-empty-msg">${String(err)}</div>`;
   }
 }
 
@@ -103,22 +107,20 @@ function renderFilesPanel() {
   });
 
   if (workspacePath) {
-    // Tree container
     const treeRoot = document.createElement("div");
     treeRoot.id = "workspace-tree-root";
     treeRoot.className = "file-tree-root";
     wsSection.body.appendChild(treeRoot);
-    // Async load
-    renderFileTree(workspacePath);
+    container.appendChild(wsSection.el);
+    // Pass element reference directly — no getElementById needed
+    loadTreeInto(treeRoot, workspacePath);
   } else {
-    // No workspace: show open folder hint
     const hint = document.createElement("div");
     hint.className = "sidebar-empty-msg";
     hint.textContent = t("sidebar.noWorkspace");
     wsSection.body.appendChild(hint);
+    container.appendChild(wsSection.el);
   }
-
-  container.appendChild(wsSection.el);
 
   // --- Recent Files section ---
   const recentCollapsed = localStorage.getItem(RECENT_COLLAPSED_KEY) === "true";
@@ -420,6 +422,7 @@ async function handleOpenWorkspace() {
     const folder = await dialogOpen({ directory: true, multiple: false });
     if (!folder) return;
     localStorage.setItem(WORKSPACE_KEY, folder);
+    // Re-render panel from scratch (new folder name in section header)
     renderFilesPanel();
   } catch (err) {
     console.error("Open workspace failed:", err);
