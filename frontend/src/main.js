@@ -1102,17 +1102,21 @@ function handleEnterKey(e) {
   }
 }
 
+// --- Shared: confirm before discarding unsaved changes ---
+// Returns true if safe to proceed (no unsaved changes, or user confirmed discard).
+async function confirmDiscard() {
+  if (!state.dirty) return true;
+  return await ask(t("new.confirmMessage"), {
+    title: t("new.confirmTitle"),
+    kind: "warning",
+    okLabel: t("new.ok"),
+    cancelLabel: t("new.cancel"),
+  });
+}
+
 // --- New File ---
 async function handleNew() {
-  if (state.dirty) {
-    const discard = await ask(t("new.confirmMessage"), {
-      title: t("new.confirmTitle"),
-      kind: "warning",
-      okLabel: t("new.ok"),
-      cancelLabel: t("new.cancel"),
-    });
-    if (!discard) return;
-  }
+  if (!await confirmDiscard()) return;
   await stopWatching();
   editor.value = "";
   state.currentPath = null;
@@ -1471,15 +1475,7 @@ async function init() {
     getEditor: () => editor,
     getState: () => state,
     openFile: async (filePath) => {
-      if (state.dirty) {
-        const discard = await ask(t("new.confirmMessage"), {
-          title: t("new.confirmTitle"),
-          kind: "warning",
-          okLabel: t("new.ok"),
-          cancelLabel: t("new.cancel"),
-        });
-        if (!discard) return;
-      }
+      if (!await confirmDiscard()) return;
       await openFileFromPath(filePath);
     },
   });

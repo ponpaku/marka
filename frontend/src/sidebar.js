@@ -297,22 +297,25 @@ function renderRecentBody(container) {
     return;
   }
 
-  // Render all items first to measure
-  for (const filePath of recents) {
-    container.appendChild(buildRecentItem(filePath));
-  }
-
-  // Trim to fit container height
+  // Measure item height using a single probe element, then remove it.
+  // This avoids the flash caused by adding all items then trimming.
+  const probe = buildRecentItem(recents[0]);
+  container.appendChild(probe);
   const containerH = container.getBoundingClientRect().height;
-  if (containerH > 0 && container.firstElementChild) {
-    const itemH = container.firstElementChild.getBoundingClientRect().height;
-    if (itemH > 0) {
-      const maxItems = Math.max(1, Math.floor(containerH / itemH));
-      while (container.children.length > maxItems) {
-        container.removeChild(container.lastChild);
-      }
-    }
+  const itemH = probe.getBoundingClientRect().height;
+  container.innerHTML = "";
+
+  const maxItems = containerH > 0 && itemH > 0
+    ? Math.max(1, Math.floor(containerH / itemH))
+    : recents.length;
+
+  // Build exact count in a DocumentFragment and append in one operation.
+  const fragment = document.createDocumentFragment();
+  const count = Math.min(recents.length, maxItems);
+  for (let i = 0; i < count; i++) {
+    fragment.appendChild(buildRecentItem(recents[i]));
   }
+  container.appendChild(fragment);
 }
 
 // --- TOC ---
@@ -337,32 +340,42 @@ function renderTOC(markdownText) {
     return;
   }
 
+  // Track occurrence count per (level, text) pair to handle duplicate headings
+  const occurrenceMap = new Map();
   for (const heading of headings) {
+    const key = `${heading.level}:${heading.text}`;
+    const occurrence = occurrenceMap.get(key) ?? 0;
+    occurrenceMap.set(key, occurrence + 1);
+
     const btn = document.createElement("button");
     btn.className = `toc-item toc-h${heading.level}`;
     btn.textContent = heading.text;
     btn.title = heading.text;
-    btn.addEventListener("click", () => scrollToHeading(heading.text, heading.level));
+    btn.addEventListener("click", () => scrollToHeading(heading.text, heading.level, occurrence));
     container.appendChild(btn);
   }
 }
 
-function scrollToHeading(headingText, level) {
+function scrollToHeading(headingText, level, occurrence = 0) {
   if (deps && deps.getEditor) {
     const editor = deps.getEditor();
     const value = editor.value;
     const hashes = "#".repeat(level);
     const lines = value.split("\n");
     let charPos = 0;
+    let matchCount = 0;
     for (const line of lines) {
       const headingMatch = line.trimEnd().match(/^(#{1,6})\s+(.+)$/);
       if (headingMatch && headingMatch[1] === hashes && headingMatch[2].trim() === headingText) {
-        editor.focus();
-        editor.setSelectionRange(charPos, charPos + line.length);
-        const lineHeight = parseFloat(getComputedStyle(editor).lineHeight) || 24;
-        const lineIndex = value.substring(0, charPos).split("\n").length - 1;
-        editor.scrollTop = lineIndex * lineHeight - editor.clientHeight / 3;
-        break;
+        if (matchCount === occurrence) {
+          editor.focus();
+          editor.setSelectionRange(charPos, charPos + line.length);
+          const lineHeight = parseFloat(getComputedStyle(editor).lineHeight) || 24;
+          const lineIndex = value.substring(0, charPos).split("\n").length - 1;
+          editor.scrollTop = lineIndex * lineHeight - editor.clientHeight / 3;
+          break;
+        }
+        matchCount++;
       }
       charPos += line.length + 1;
     }
@@ -370,27 +383,27 @@ function scrollToHeading(headingText, level) {
 
   const preview = document.getElementById("preview-pane");
   if (preview) {
-    const headingId = headingText
-      .toLowerCase()
-      .replace(/[^\w\s-]/g, "")
-      .replace(/\s+/g, "-")
-      .replace(/-+/g, "-")
-      .replace(/^-|-$/g, "");
-    const el = preview.querySelector(`#${CSS.escape(headingId)}`);
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    // Query all headings matching the level and text, then pick the occurrence-th one.
+    // This is more robust than predicting ID suffixes for duplicates.
+    const tag = `h${level}`;
+    const candidates = Array.from(preview.querySelectorAll(tag)).filter(
+      (el) => el.textContent.trim() === headingText
+    );
+    const target = candidates[occurrence] ?? candidates[0];
+    if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 }
 
 // --- File tree ---
 
 async function loadTreeInto(treeRoot, folderPath) {
-  treeRoot.innerHTML = '<div class="sidebar-empty-msg">読み込み中...</div>';
+  treeRoot.innerHTML = `<div class="sidebar-empty-msg">${t("sidebar.loading")}</div>`;
   if (!folderPath) { treeRoot.innerHTML = ""; return; }
   try {
     const tree = await buildMdTree(folderPath);
     treeRoot.innerHTML = "";
     if (tree.length === 0) {
-      treeRoot.innerHTML = '<div class="sidebar-empty-msg">.md ファイルなし</div>';
+      treeRoot.innerHTML = `<div class="sidebar-empty-msg">${t("sidebar.noMdFiles")}</div>`;
       return;
     }
     treeRoot.appendChild(renderTreeNodes(tree));

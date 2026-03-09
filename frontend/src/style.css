@@ -703,7 +703,7 @@ textarea {
 }
 #sidebar-resize-handle:hover,
 #sidebar-resize-handle.dragging {
-    background: #0e639c;
+    background: var(--border-sidebar-tab-active);
 }
 #sidebar-resize-handle.dragging::after { opacity: 0; }
 

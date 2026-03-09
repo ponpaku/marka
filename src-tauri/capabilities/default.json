@@ -24,8 +24,7 @@
         { "path": "$APPDATA/**" },
         { "path": "$DESKTOP/**" },
         { "path": "$DOCUMENT/**" },
-        { "path": "$HOME/**" },
-        { "path": "**" }
+        { "path": "$HOME/**" }
       ]
     },
     "store:default"
