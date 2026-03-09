@@ -7,12 +7,11 @@ const RECENT_KEY = "sokki-recent-files";
 const SIDEBAR_VISIBLE_KEY = "sokki-sidebar-visible";
 const SIDEBAR_TAB_KEY = "sokki-sidebar-tab";
 const WORKSPACE_KEY = "sokki-workspace-folder";
+const WORKSPACE_COLLAPSED_KEY = "sokki-workspace-collapsed";
+const RECENT_COLLAPSED_KEY = "sokki-recent-collapsed";
 const RECENT_MAX = 20;
 
-// Debounce timer for TOC updates
 let tocDebounceTimer = null;
-
-// Dependency references set by initSidebar
 let deps = null;
 
 // --- Public API ---
@@ -20,136 +19,182 @@ let deps = null;
 export function initSidebar(d) {
   deps = d;
 
-  // Restore sidebar visibility
   const visible = localStorage.getItem(SIDEBAR_VISIBLE_KEY) !== "false";
   setSidebarVisible(visible);
 
-  // Restore active tab
   const savedTab = localStorage.getItem(SIDEBAR_TAB_KEY) || "files";
   switchTab(savedTab);
 
-  // Restore workspace
-  const savedWorkspace = localStorage.getItem(WORKSPACE_KEY);
-  if (savedWorkspace) {
-    setWorkspaceName(savedWorkspace);
-    renderFileTree(savedWorkspace);
-  }
+  renderFilesPanel();
 
-  // Render recent files
-  renderRecentFiles();
-
-  // Wire up sidebar toggle button
   const btnToggle = document.getElementById("btn-sidebar-toggle");
-  if (btnToggle) {
-    btnToggle.addEventListener("click", toggleSidebar);
-  }
+  if (btnToggle) btnToggle.addEventListener("click", toggleSidebar);
 
-  // Wire up tab buttons
   document.querySelectorAll(".sidebar-tab").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      switchTab(btn.dataset.tab);
-    });
+    btn.addEventListener("click", () => switchTab(btn.dataset.tab));
   });
 
-  // Wire up Open Folder
   const btnOpenWorkspace = document.getElementById("btn-open-workspace");
-  if (btnOpenWorkspace) {
-    btnOpenWorkspace.addEventListener("click", handleOpenWorkspace);
-  }
-
-  // Wire up Close Workspace
-  const btnCloseWorkspace = document.getElementById("btn-close-workspace");
-  if (btnCloseWorkspace) {
-    btnCloseWorkspace.addEventListener("click", handleCloseWorkspace);
-  }
+  if (btnOpenWorkspace) btnOpenWorkspace.addEventListener("click", handleOpenWorkspace);
 }
 
 export function toggleSidebar() {
   const sidebar = document.getElementById("sidebar");
   if (!sidebar) return;
-  const isHidden = sidebar.classList.contains("hidden");
-  setSidebarVisible(isHidden);
+  setSidebarVisible(sidebar.classList.contains("hidden"));
 }
 
 export function updateTOC(markdownText) {
   clearTimeout(tocDebounceTimer);
-  tocDebounceTimer = setTimeout(() => {
-    renderTOC(markdownText);
-  }, 200);
+  tocDebounceTimer = setTimeout(() => renderTOC(markdownText), 200);
 }
 
 export function addToRecentFiles(filePath) {
   if (!filePath) return;
   let recents = loadRecentFiles();
-  // Remove duplicates
   recents = recents.filter((p) => p !== filePath);
-  // Prepend
   recents.unshift(filePath);
-  // Limit
   if (recents.length > RECENT_MAX) recents = recents.slice(0, RECENT_MAX);
   localStorage.setItem(RECENT_KEY, JSON.stringify(recents));
-  renderRecentFiles();
+  // Only re-render the recent section, not the whole panel
+  const recentBody = document.getElementById("recent-section-body");
+  if (recentBody) renderRecentBody(recentBody);
 }
 
 export async function renderFileTree(folderPath) {
-  const container = document.getElementById("file-tree");
-  if (!container) return;
-  container.innerHTML = "";
-  if (!folderPath) return;
-
+  const treeRoot = document.getElementById("workspace-tree-root");
+  if (!treeRoot) return;
+  treeRoot.innerHTML = '<div class="sidebar-empty-msg">読み込み中...</div>';
+  if (!folderPath) { treeRoot.innerHTML = ""; return; }
   try {
     const tree = await buildMdTree(folderPath);
+    treeRoot.innerHTML = "";
     if (tree.length === 0) {
+      treeRoot.innerHTML = '<div class="sidebar-empty-msg">.md ファイルなし</div>';
       return;
     }
-    container.appendChild(renderTreeNodes(tree));
+    treeRoot.appendChild(renderTreeNodes(tree));
   } catch (err) {
     console.error("renderFileTree failed:", err);
-    container.innerHTML = `<div class="sidebar-empty-msg">${err}</div>`;
+    treeRoot.innerHTML = `<div class="sidebar-empty-msg">${err}</div>`;
   }
 }
 
-// --- Internal helpers ---
+// --- Internal: render whole Files panel ---
 
-function setSidebarVisible(visible) {
-  const sidebar = document.getElementById("sidebar");
-  if (!sidebar) return;
-  if (visible) {
-    sidebar.classList.remove("hidden");
-  } else {
-    sidebar.classList.add("hidden");
-  }
-  localStorage.setItem(SIDEBAR_VISIBLE_KEY, String(visible));
-}
-
-function switchTab(tab) {
-  document.querySelectorAll(".sidebar-tab").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.tab === tab);
-  });
-  document.querySelectorAll(".sidebar-panel").forEach((panel) => {
-    panel.classList.add("hidden");
-  });
-  const activePanel = document.getElementById(
-    tab === "files" ? "sidebar-files" : "sidebar-toc"
-  );
-  if (activePanel) activePanel.classList.remove("hidden");
-  localStorage.setItem(SIDEBAR_TAB_KEY, tab);
-}
-
-function loadRecentFiles() {
-  try {
-    const raw = localStorage.getItem(RECENT_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function renderRecentFiles() {
-  const container = document.getElementById("recent-files-list");
+function renderFilesPanel() {
+  const container = document.getElementById("sidebar-sections");
   if (!container) return;
   container.innerHTML = "";
 
+  const workspacePath = localStorage.getItem(WORKSPACE_KEY);
+
+  // --- Workspace section ---
+  const workspaceCollapsed = localStorage.getItem(WORKSPACE_COLLAPSED_KEY) === "true";
+  const wsSection = createSection({
+    id: "workspace-section",
+    title: workspacePath ? workspacePath.split(/[\\/]/).pop() : t("sidebar.openFolder"),
+    collapsed: workspaceCollapsed,
+    expandable: true,
+    actions: workspacePath
+      ? [{ label: "✕", title: "Close folder", onClick: handleCloseWorkspace }]
+      : [],
+    onToggle: (collapsed) => localStorage.setItem(WORKSPACE_COLLAPSED_KEY, String(collapsed)),
+  });
+
+  if (workspacePath) {
+    // Tree container
+    const treeRoot = document.createElement("div");
+    treeRoot.id = "workspace-tree-root";
+    treeRoot.className = "file-tree-root";
+    wsSection.body.appendChild(treeRoot);
+    // Async load
+    renderFileTree(workspacePath);
+  } else {
+    // No workspace: show open folder hint
+    const hint = document.createElement("div");
+    hint.className = "sidebar-empty-msg";
+    hint.textContent = t("sidebar.noWorkspace");
+    wsSection.body.appendChild(hint);
+  }
+
+  container.appendChild(wsSection.el);
+
+  // --- Recent Files section ---
+  const recentCollapsed = localStorage.getItem(RECENT_COLLAPSED_KEY) === "true";
+  const recentSection = createSection({
+    id: "recent-section",
+    title: t("sidebar.recentFiles"),
+    collapsed: recentCollapsed,
+    expandable: true,
+    onToggle: (collapsed) => localStorage.setItem(RECENT_COLLAPSED_KEY, String(collapsed)),
+  });
+
+  recentSection.body.id = "recent-section-body";
+  renderRecentBody(recentSection.body);
+  container.appendChild(recentSection.el);
+}
+
+/**
+ * Create a VSCode-style collapsible section.
+ * Returns { el, body } where el is the section root and body is the content container.
+ */
+function createSection({ id, title, collapsed, expandable, actions = [], onToggle }) {
+  const section = document.createElement("div");
+  section.className = "sidebar-section" + (expandable ? " expandable" : "") + (collapsed ? " collapsed" : "");
+  if (id) section.id = id;
+
+  // Header
+  const header = document.createElement("div");
+  header.className = "sidebar-section-header";
+
+  const chevron = document.createElement("span");
+  chevron.className = "sidebar-section-chevron";
+  chevron.textContent = "▾";
+
+  const titleEl = document.createElement("span");
+  titleEl.className = "sidebar-section-title-text";
+  titleEl.textContent = title;
+
+  header.appendChild(chevron);
+  header.appendChild(titleEl);
+
+  // Action buttons (visible on hover)
+  if (actions.length > 0) {
+    const actionsEl = document.createElement("span");
+    actionsEl.className = "sidebar-section-actions";
+    for (const action of actions) {
+      const btn = document.createElement("button");
+      btn.className = "sidebar-section-action-btn";
+      btn.textContent = action.label;
+      btn.title = action.title || "";
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        action.onClick();
+      });
+      actionsEl.appendChild(btn);
+    }
+    header.appendChild(actionsEl);
+  }
+
+  // Body
+  const body = document.createElement("div");
+  body.className = "sidebar-section-body";
+
+  // Toggle on header click
+  header.addEventListener("click", () => {
+    const isCollapsed = section.classList.toggle("collapsed");
+    if (onToggle) onToggle(isCollapsed);
+  });
+
+  section.appendChild(header);
+  section.appendChild(body);
+
+  return { el: section, body };
+}
+
+function renderRecentBody(container) {
+  container.innerHTML = "";
   const recents = loadRecentFiles();
   if (recents.length === 0) {
     const msg = document.createElement("div");
@@ -158,23 +203,34 @@ function renderRecentFiles() {
     container.appendChild(msg);
     return;
   }
-
   for (const filePath of recents) {
     const btn = document.createElement("button");
     btn.className = "recent-file-item";
-    const filename = filePath.split(/[\\/]/).pop();
-    btn.textContent = filename;
-    btn.title = filePath;
-    // Highlight active file
     if (deps && deps.getState && deps.getState().currentPath === filePath) {
       btn.classList.add("active");
     }
+
+    const name = document.createElement("span");
+    name.className = "recent-file-name";
+    name.textContent = filePath.split(/[\\/]/).pop();
+
+    const dir = document.createElement("span");
+    dir.className = "recent-file-dir";
+    const parts = filePath.split(/[\\/]/);
+    dir.textContent = parts.length > 1 ? parts[parts.length - 2] : "";
+    dir.title = filePath;
+
+    btn.appendChild(name);
+    btn.appendChild(dir);
+    btn.title = filePath;
     btn.addEventListener("click", () => {
       if (deps && deps.openFile) deps.openFile(filePath);
     });
     container.appendChild(btn);
   }
 }
+
+// --- Internal: TOC ---
 
 function renderTOC(markdownText) {
   const container = document.getElementById("toc-list");
@@ -207,35 +263,28 @@ function renderTOC(markdownText) {
 }
 
 function scrollToHeading(headingText, level) {
-  // Scroll editor to the heading line
   if (deps && deps.getEditor) {
     const editor = deps.getEditor();
     const value = editor.value;
     const hashes = "#".repeat(level);
-    // Find the line that matches
     const lines = value.split("\n");
     let charPos = 0;
     for (const line of lines) {
-      const trimmed = line.trimEnd();
-      // Match heading with exact level (not more)
-      const headingMatch = trimmed.match(/^(#{1,6})\s+(.+)$/);
+      const headingMatch = line.trimEnd().match(/^(#{1,6})\s+(.+)$/);
       if (headingMatch && headingMatch[1] === hashes && headingMatch[2].trim() === headingText) {
         editor.focus();
         editor.setSelectionRange(charPos, charPos + line.length);
-        // Scroll into view by dispatching a scroll on the textarea
         const lineHeight = parseFloat(getComputedStyle(editor).lineHeight) || 24;
         const lineIndex = value.substring(0, charPos).split("\n").length - 1;
         editor.scrollTop = lineIndex * lineHeight - editor.clientHeight / 3;
         break;
       }
-      charPos += line.length + 1; // +1 for \n
+      charPos += line.length + 1;
     }
   }
 
-  // Scroll preview to the heading
   const preview = document.getElementById("preview-pane");
   if (preview) {
-    // marked.js generates IDs like: heading-text → lowercase, spaces → hyphens
     const headingId = headingText
       .toLowerCase()
       .replace(/[^\w\s-]/g, "")
@@ -243,19 +292,22 @@ function scrollToHeading(headingText, level) {
       .replace(/-+/g, "-")
       .replace(/^-|-$/g, "");
     const el = preview.querySelector(`#${CSS.escape(headingId)}`);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 }
 
-// Build a tree from readDir entries, keeping only .md/.markdown files.
-// Recursively calls readDir for subdirectories.
+// --- Internal: file tree ---
+
 async function buildMdTree(dirPath) {
   const entries = await readDir(dirPath);
+  // Sort: folders first, then files, both alphabetically
+  entries.sort((a, b) => {
+    if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+    return (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" });
+  });
   const result = [];
   for (const entry of entries) {
-    if (!entry.name) continue;
+    if (!entry.name || entry.name.startsWith(".")) continue;
     const entryPath = await join(dirPath, entry.name);
     if (entry.isDirectory) {
       const children = await buildMdTree(entryPath);
@@ -269,52 +321,98 @@ async function buildMdTree(dirPath) {
   return result;
 }
 
-function renderTreeNodes(nodes) {
-  const ul = document.createElement("div");
+function renderTreeNodes(nodes, depth = 0) {
+  const container = document.createElement("div");
   for (const node of nodes) {
     if (node.children !== null) {
-      // Folder
+      // Folder node
       const folder = document.createElement("div");
       folder.className = "file-tree-folder";
 
       const label = document.createElement("div");
       label.className = "file-tree-folder-label";
+      label.style.paddingLeft = `${8 + depth * 12}px`;
+
       const icon = document.createElement("span");
-      icon.className = "folder-icon";
+      icon.className = "file-tree-folder-icon";
       icon.textContent = "▾";
-      label.appendChild(icon);
+
       const nameSpan = document.createElement("span");
       nameSpan.textContent = node.name;
+
+      label.appendChild(icon);
       label.appendChild(nameSpan);
       folder.appendChild(label);
 
       const children = document.createElement("div");
       children.className = "file-tree-children";
-      children.appendChild(renderTreeNodes(node.children));
+      children.appendChild(renderTreeNodes(node.children, depth + 1));
       folder.appendChild(children);
 
       label.addEventListener("click", () => {
-        const collapsed = children.classList.toggle("collapsed");
-        icon.textContent = collapsed ? "▸" : "▾";
+        const isCollapsed = folder.classList.toggle("collapsed");
+        children.classList.toggle("collapsed", isCollapsed);
       });
 
-      ul.appendChild(folder);
+      container.appendChild(folder);
     } else {
-      // File
+      // File node
       const btn = document.createElement("button");
       btn.className = "file-tree-item";
-      btn.textContent = node.name;
+      btn.style.paddingLeft = `${8 + depth * 12}px`;
       btn.title = node.path;
+
+      const fileIcon = document.createElement("span");
+      fileIcon.className = "file-tree-file-icon";
+      fileIcon.textContent = "○";
+
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "file-tree-name";
+      nameSpan.textContent = node.name;
+
+      btn.appendChild(fileIcon);
+      btn.appendChild(nameSpan);
+
       if (deps && deps.getState && deps.getState().currentPath === node.path) {
         btn.classList.add("active");
       }
       btn.addEventListener("click", () => {
         if (deps && deps.openFile) deps.openFile(node.path);
       });
-      ul.appendChild(btn);
+      container.appendChild(btn);
     }
   }
-  return ul;
+  return container;
+}
+
+// --- Internal: misc ---
+
+function setSidebarVisible(visible) {
+  const sidebar = document.getElementById("sidebar");
+  if (!sidebar) return;
+  sidebar.classList.toggle("hidden", !visible);
+  localStorage.setItem(SIDEBAR_VISIBLE_KEY, String(visible));
+}
+
+function switchTab(tab) {
+  document.querySelectorAll(".sidebar-tab").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.tab === tab);
+  });
+  document.querySelectorAll(".sidebar-panel").forEach((panel) => {
+    panel.classList.add("hidden");
+  });
+  const activePanel = document.getElementById(tab === "files" ? "sidebar-files" : "sidebar-toc");
+  if (activePanel) activePanel.classList.remove("hidden");
+  localStorage.setItem(SIDEBAR_TAB_KEY, tab);
+}
+
+function loadRecentFiles() {
+  try {
+    const raw = localStorage.getItem(RECENT_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
 }
 
 async function handleOpenWorkspace() {
@@ -322,8 +420,7 @@ async function handleOpenWorkspace() {
     const folder = await dialogOpen({ directory: true, multiple: false });
     if (!folder) return;
     localStorage.setItem(WORKSPACE_KEY, folder);
-    setWorkspaceName(folder);
-    await renderFileTree(folder);
+    renderFilesPanel();
   } catch (err) {
     console.error("Open workspace failed:", err);
   }
@@ -331,20 +428,5 @@ async function handleOpenWorkspace() {
 
 function handleCloseWorkspace() {
   localStorage.removeItem(WORKSPACE_KEY);
-  setWorkspaceName(null);
-  const container = document.getElementById("file-tree");
-  if (container) container.innerHTML = "";
-}
-
-function setWorkspaceName(folderPath) {
-  const nameEl = document.getElementById("workspace-name");
-  const closeBtn = document.getElementById("btn-close-workspace");
-  if (!nameEl) return;
-  if (folderPath) {
-    nameEl.textContent = folderPath.split(/[\\/]/).pop();
-    if (closeBtn) closeBtn.hidden = false;
-  } else {
-    nameEl.textContent = "";
-    if (closeBtn) closeBtn.hidden = true;
-  }
+  renderFilesPanel();
 }
