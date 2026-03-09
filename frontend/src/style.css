@@ -874,6 +874,7 @@ textarea {
     cursor: pointer;
     gap: 5px;
     overflow: hidden;
+    flex-shrink: 0;
 }
 .recent-file-item:hover { background: var(--bg-sidebar-item-hover); }
 .recent-file-item.active { background: var(--bg-sidebar-item-active); }
