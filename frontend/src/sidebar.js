@@ -86,8 +86,19 @@ function renderFilesPanel() {
     hint.textContent = t("sidebar.noWorkspace");
     workspaceArea.appendChild(hint);
   } else {
+    // Count basenames to detect duplicates
+    const basenameCounts = new Map();
+    for (const p of folders) {
+      const base = p.split(/[\\/]/).pop();
+      basenameCounts.set(base, (basenameCounts.get(base) || 0) + 1);
+    }
     for (const folderPath of folders) {
-      const folderEl = buildFolderSection(folderPath);
+      const base = folderPath.split(/[\\/]/).pop();
+      const parts = folderPath.split(/[\\/]/);
+      const parentName = basenameCounts.get(base) > 1 && parts.length >= 2
+        ? parts[parts.length - 2]
+        : null;
+      const folderEl = buildFolderSection(folderPath, parentName);
       workspaceArea.appendChild(folderEl.el);
     }
   }
@@ -126,12 +137,13 @@ function renderFilesPanel() {
   panel.appendChild(recentArea);
 }
 
-function buildFolderSection(folderPath) {
+function buildFolderSection(folderPath, parentName = null) {
   const collapseKey = `sokki-folder-collapsed-${folderPath}`;
   const collapsed = localStorage.getItem(collapseKey) === "true";
 
   const section = createSection({
     title: folderPath.split(/[\\/]/).pop(),
+    subtitle: parentName,
     collapsed,
     actions: [
       { label: "✕", title: t("sidebar.closeFolder"), onClick: () => handleCloseFolder(folderPath) },
@@ -183,7 +195,7 @@ function initResizeHandle(handle) {
 
 // --- VSCode-style collapsible section ---
 
-function createSection({ id, title, collapsed, actions = [], onToggle }) {
+function createSection({ id, title, subtitle = null, collapsed, actions = [], onToggle }) {
   const section = document.createElement("div");
   section.className = "sidebar-section" + (collapsed ? " collapsed" : "");
   if (id) section.id = id;
@@ -202,6 +214,14 @@ function createSection({ id, title, collapsed, actions = [], onToggle }) {
 
   header.appendChild(chevron);
   header.appendChild(titleEl);
+
+  if (subtitle) {
+    const subtitleEl = document.createElement("span");
+    subtitleEl.className = "sidebar-section-subtitle";
+    subtitleEl.textContent = subtitle;
+    subtitleEl.title = subtitle;
+    header.appendChild(subtitleEl);
+  }
 
   if (actions.length > 0) {
     const actionsEl = document.createElement("span");

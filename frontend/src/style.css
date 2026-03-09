@@ -769,6 +769,19 @@ textarea {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+.sidebar-section-subtitle {
+    font-size: 0.65rem;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    opacity: 0.5;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 70px;
+    flex-shrink: 0;
+    margin-right: 2px;
+}
 .sidebar-section-actions {
     display: flex;
     gap: 2px;
