@@ -12,10 +12,14 @@
 <div id="help-panel"></div>
 
 <header>
-    <div><strong>Sokki</strong> MD Editor</div>
+    <div style="display: flex; align-items: center; gap: 8px;">
+        <button id="btn-sidebar-toggle" class="btn" data-i18n-title="sidebar.toggleTitle" title="Toggle Sidebar">&#9776;</button>
+        <strong>Sokki</strong> MD Editor
+    </div>
     <div style="display: flex; align-items: center;">
         <div id="status" data-i18n="status.ready">Ready</div>
         <div class="btn-group">
+            <button class="btn" id="btn-new" data-i18n="btn.new">New</button>
             <button class="btn" id="btn-open" data-i18n="btn.open">Open</button>
             <button class="btn" id="btn-save" data-i18n="btn.save">Save</button>
             <button class="btn" id="btn-save-as" data-i18n="btn.saveAs">Save As</button>
@@ -26,6 +30,7 @@
                     <button class="export-option" id="export-txt" data-i18n="export.plainText">Plain Text (.txt)</button>
                     <button class="export-option" id="export-pdf" data-i18n="export.pdf">PDF</button>
                     <button class="export-option" id="export-html" data-i18n="export.html">HTML</button>
+                    <button class="export-option" id="export-print" data-i18n="export.print">Print</button>
                 </div>
             </div>
             <button id="theme-toggle" data-i18n-title="btn.themeToggle" title="Toggle theme"></button>
@@ -33,15 +38,74 @@
     </div>
 </header>
 
-<div class="container">
-    <div id="editor-pane">
-        <textarea id="editor" data-i18n-placeholder="editor.placeholder" placeholder="Type here..."></textarea>
+<div class="app-body">
+    <!-- Sidebar -->
+    <div id="sidebar">
+        <div id="sidebar-tab-bar">
+            <button class="sidebar-tab active" data-tab="files" data-i18n="sidebar.files">ファイル</button>
+            <button class="sidebar-tab" data-tab="toc" data-i18n="sidebar.toc">目次</button>
+        </div>
+        <div id="sidebar-content">
+            <!-- Files panel — workspace-area / resize-handle / recent-area injected by sidebar.js -->
+            <div id="sidebar-files" class="sidebar-panel">
+                <div id="sidebar-files-toolbar">
+                    <button id="btn-open-workspace" data-i18n-title="sidebar.openFolder" title="Open Folder">&#128193;</button>
+                </div>
+            </div>
+            <!-- TOC panel -->
+            <div id="sidebar-toc" class="sidebar-panel hidden">
+                <div id="toc-list"></div>
+            </div>
+        </div>
+        <div id="sidebar-about-footer">
+            <button id="btn-about"><span class="about-btn-icon">i</span><span data-i18n="about.menuLabel">このアプリについて</span></button>
+        </div>
     </div>
-    <div id="divider"></div>
-    <div id="preview-wrapper">
-        <button id="preview-style-toggle" title="Preview Style">&#x1f3a8;</button>
-        <div id="preview-style-panel" class="psp-panel"></div>
-        <div id="preview-pane"></div>
+
+    <!-- About Modal -->
+    <div id="about-modal" class="about-overlay" aria-modal="true" role="dialog">
+        <div class="about-dialog">
+            <div class="about-header">
+                <span class="about-title" data-i18n="about.title">About Sokki MD Editor</span>
+                <button id="about-close" class="about-close-btn" data-i18n-title="about.close" title="Close">&times;</button>
+            </div>
+            <div class="about-body">
+                <div class="about-app-name">Sokki MD Editor</div>
+                <table class="about-table">
+                    <tr>
+                        <th data-i18n="about.version">Version</th>
+                        <td id="about-version">—</td>
+                    </tr>
+                    <tr>
+                        <th data-i18n="about.author">Author</th>
+                        <td>ponpaku</td>
+                    </tr>
+                    <tr>
+                        <th data-i18n="about.repository">Repository</th>
+                        <td>
+                            <span id="about-repo-url" class="about-url">https://github.com/ponpaku/sokki-MD-Editor</span>
+                            <button id="about-copy-url" class="about-copy-btn" data-i18n="about.copyUrl">Copy</button>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th data-i18n="about.license">License</th>
+                        <td>MIT</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div id="editor-pane">
+            <textarea id="editor" data-i18n-placeholder="editor.placeholder" placeholder="Type here..."></textarea>
+        </div>
+        <div id="divider"></div>
+        <div id="preview-wrapper">
+            <button id="preview-style-toggle" title="Preview Style">&#x1f3a8;</button>
+            <div id="preview-style-panel" class="psp-panel"></div>
+            <div id="preview-pane"></div>
+        </div>
     </div>
 </div>
 
