@@ -202,12 +202,15 @@ function initResizeHandle(handle) {
     const startY = e.clientY;
     const startHeight = recentArea.getBoundingClientRect().height;
 
-    // Max height = all items × fixed item height + section header height
-    const recentCount = loadRecentFiles().length;
+    // Measure actual item height from a rendered item (avoids hardcoded constant mismatch)
     const sectionHeader = recentArea.querySelector(".sidebar-section-header");
     const headerH = sectionHeader ? sectionHeader.getBoundingClientRect().height : 28;
+    const firstItem = recentArea.querySelector(".recent-file-item");
+    const itemH = firstItem ? firstItem.getBoundingClientRect().height : RECENT_ITEM_HEIGHT_PX;
+
+    const recentCount = loadRecentFiles().length;
     const maxHeight = recentCount > 0
-      ? Math.max(RECENT_HEIGHT_MIN, recentCount * RECENT_ITEM_HEIGHT_PX + headerH)
+      ? Math.max(RECENT_HEIGHT_MIN, recentCount * itemH + headerH)
       : RECENT_HEIGHT_MIN;
 
     const recentBody = document.getElementById("recent-section-body");
@@ -216,8 +219,11 @@ function initResizeHandle(handle) {
       const delta = startY - e.clientY; // drag up = increase height
       const newHeight = Math.min(maxHeight, Math.max(RECENT_HEIGHT_MIN, startHeight + delta));
       recentArea.style.height = `${newHeight}px`;
-      // Pass body height directly so renderRecentBody doesn't rely on stale getBoundingClientRect
-      if (recentBody) renderRecentBody(recentBody, newHeight - headerH);
+      // Calculate item count directly from measured height — no DOM reflow needed
+      if (recentBody) {
+        const count = Math.max(1, Math.floor((newHeight - headerH) / itemH));
+        renderRecentBody(recentBody, count * itemH);
+      }
     };
 
     const onMouseUp = () => {
