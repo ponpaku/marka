@@ -30,6 +30,8 @@
         { "path": "$HOME/**" }
       ]
     },
-    "store:default"
+    "store:default",
+    "opener:default",
+    "opener:allow-open-url"
   ]
 }

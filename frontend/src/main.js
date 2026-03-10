@@ -13,6 +13,7 @@ import { readTextFile } from "@tauri-apps/plugin-fs";
 import { resolvePreviewImages } from "./image-resolver.js";
 import { startWatching, stopWatching, suppressNextChange, clearSuppression, setExternalChangeHandler } from "./file-watcher.js";
 import { initSidebar, updateTOC, addToRecentFiles } from "./sidebar.js";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   findListContext,
   findParentListItem,
@@ -224,6 +225,16 @@ function markDirty() {
 
 // --- Task List Checkbox Toggle ---
 preview.addEventListener("click", (e) => {
+  // Open external links in the system browser instead of navigating the WebView
+  const anchor = e.target.closest("a[href]");
+  if (anchor) {
+    const href = anchor.getAttribute("href");
+    if (href && (href.startsWith("http://") || href.startsWith("https://"))) {
+      e.preventDefault();
+      openUrl(href).catch(console.error);
+      return;
+    }
+  }
   if (e.target.tagName === "INPUT" && e.target.type === "checkbox" && e.target.dataset.index != null) {
     const beforeSnapshot = captureEditorSnapshot();
     const cbIdx = parseInt(e.target.dataset.index);
