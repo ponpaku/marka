@@ -861,7 +861,7 @@ textarea {
     color: var(--fg-sidebar);
     font-size: 0.78rem;
     text-align: left;
-    cursor: pointer;
+    cursor: default;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -869,6 +869,8 @@ textarea {
 }
 .file-tree-item:hover { background: var(--bg-sidebar-item-hover); }
 .file-tree-item.active { background: var(--bg-sidebar-item-active); }
+.file-tree-item.dragging { cursor: grabbing; }
+body.dragging-file, body.dragging-file * { cursor: grabbing !important; }
 .file-tree-file-icon {
     font-size: 0.65rem;
     opacity: 0.5;

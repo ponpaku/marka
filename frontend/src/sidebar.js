@@ -762,9 +762,14 @@ async function handleDuplicate(filePath) {
     const name = filePath.split(/[\\/]/).pop();
     const destPath = await generateCopyPath(dir, name);
     await copyFile(filePath, destPath);
-    const destName = destPath.split(/[\\/]/).pop();
-    showStatus(t("status.duplicated", destName));
+    showStatus(t("status.duplicated", destPath.split(/[\\/]/).pop()));
     await refreshTreeForPath(filePath);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = findFileItemByPath(destPath);
+        if (el) triggerInlineRename(destPath, el);
+      });
+    });
   } catch (err) {
     console.error("Duplicate failed:", err);
     showStatus(t("status.fsError", String(err)));
@@ -860,7 +865,7 @@ function onDragMouseMove(e) {
     document.body.appendChild(ghost);
     dragState.ghost = ghost;
     document.body.style.userSelect = "none";
-    document.body.style.cursor = "grabbing";
+    document.body.classList.add("dragging-file");
   }
   e.preventDefault();
   if (dragState.ghost) {
@@ -893,7 +898,7 @@ async function onDragMouseUp(e) {
   if (ghost) ghost.remove();
   srcEl.classList.remove("dragging");
   document.body.style.userSelect = "";
-  document.body.style.cursor = "";
+  document.body.classList.remove("dragging-file");
   clearDragOver();
   if (!active) return;
   // Find drop target via hit-test
