@@ -51,6 +51,14 @@
     --bg-ctx-separator: #e0e0e0;
     --bg-drag-over: rgba(14,99,156,0.12);
     --border-drag-over: #0e639c;
+    --bg-about-footer: #e0e0e0;
+    --fg-about-footer: #666;
+    --border-about-footer: #ccc;
+    --bg-about-overlay: rgba(0,0,0,0.35);
+    --bg-about-dialog: #ffffff;
+    --fg-about-dialog: #333;
+    --border-about-dialog: #ccc;
+    --bg-about-th: #f5f5f5;
 }
 
 [data-theme="dark"] {
@@ -105,6 +113,14 @@
     --bg-ctx-separator: #444;
     --bg-drag-over: rgba(14,99,156,0.2);
     --border-drag-over: #0e639c;
+    --bg-about-footer: #1e1e1e;
+    --fg-about-footer: #666;
+    --border-about-footer: #3c3c3c;
+    --bg-about-overlay: rgba(0,0,0,0.55);
+    --bg-about-dialog: #252526;
+    --fg-about-dialog: #d4d4d4;
+    --border-about-dialog: #3c3c3c;
+    --bg-about-th: #1e1e1e;
 }
 
 /* --- Base Styles --- */
@@ -1078,4 +1094,140 @@ body.dragging-file, body.dragging-file * { cursor: grabbing !important; }
     #preview-pane table th {
         background-color: #f0f0f0 !important;
     }
+}
+
+/* ===== Sidebar About Footer ===== */
+#sidebar-about-footer {
+    flex-shrink: 0;
+    border-top: 1px solid var(--border-about-footer);
+    background: var(--bg-about-footer);
+    display: flex;
+    align-items: center;
+    padding: 0 6px;
+    height: 28px;
+}
+#btn-about {
+    background: none;
+    border: none;
+    color: var(--fg-about-footer);
+    font-size: 0.72rem;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    width: 100%;
+    text-align: left;
+    transition: color 0.15s;
+}
+#btn-about:hover {
+    color: var(--fg-sidebar);
+}
+
+/* ===== About Modal ===== */
+.about-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9100;
+    background: var(--bg-about-overlay);
+    align-items: center;
+    justify-content: center;
+}
+.about-overlay.open {
+    display: flex;
+}
+.about-dialog {
+    background: var(--bg-about-dialog);
+    color: var(--fg-about-dialog);
+    border: 1px solid var(--border-about-dialog);
+    border-radius: 6px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    width: 380px;
+    max-width: calc(100vw - 32px);
+    overflow: hidden;
+}
+.about-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-about-dialog);
+}
+.about-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    opacity: 0.8;
+}
+.about-close-btn {
+    background: none;
+    border: none;
+    color: var(--fg-about-dialog);
+    font-size: 1.2rem;
+    cursor: pointer;
+    line-height: 1;
+    padding: 2px 5px;
+    border-radius: 3px;
+    opacity: 0.6;
+}
+.about-close-btn:hover { opacity: 1; }
+.about-body {
+    padding: 20px 18px 22px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+}
+.about-app-name {
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+.about-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+}
+.about-table th,
+.about-table td {
+    padding: 6px 8px;
+    text-align: left;
+    vertical-align: middle;
+    border-bottom: 1px solid var(--border-about-dialog);
+}
+.about-table th {
+    width: 100px;
+    background: var(--bg-about-th);
+    font-weight: 600;
+    opacity: 0.8;
+    white-space: nowrap;
+}
+.about-table tr:last-child th,
+.about-table tr:last-child td {
+    border-bottom: none;
+}
+.about-url {
+    font-size: 0.75rem;
+    word-break: break-all;
+    opacity: 0.85;
+}
+.about-copy-btn {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 7px;
+    font-size: 0.7rem;
+    background: none;
+    border: 1px solid var(--border-about-dialog);
+    border-radius: 3px;
+    color: var(--fg-about-dialog);
+    cursor: pointer;
+    white-space: nowrap;
+    vertical-align: middle;
+    transition: background 0.15s;
+}
+.about-copy-btn:hover {
+    background: var(--bg-ctx-menu-hover);
+    color: var(--fg-ctx-menu-hover);
+    border-color: var(--bg-ctx-menu-hover);
 }

@@ -51,6 +51,8 @@ export function initSidebar(d) {
 
   const btnOpenWorkspace = document.getElementById("btn-open-workspace");
   if (btnOpenWorkspace) btnOpenWorkspace.addEventListener("click", handleOpenWorkspace);
+
+  initAboutModal();
 }
 
 export function toggleSidebar() {
@@ -1247,4 +1249,51 @@ function loadRecentFiles() {
   } catch {
     return [];
   }
+}
+
+// --- About Modal ---
+
+function initAboutModal() {
+  const btnAbout = document.getElementById("btn-about");
+  const modal = document.getElementById("about-modal");
+  const btnClose = document.getElementById("about-close");
+  const btnCopy = document.getElementById("about-copy-url");
+  const urlEl = document.getElementById("about-repo-url");
+  if (!btnAbout || !modal) return;
+
+  function openModal() { modal.classList.add("open"); }
+  function closeModal() { modal.classList.remove("open"); }
+
+  btnAbout.addEventListener("click", openModal);
+  btnClose?.addEventListener("click", closeModal);
+
+  // Close on overlay click (outside dialog)
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) closeModal();
+  });
+
+  // Close on Escape
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && modal.classList.contains("open")) closeModal();
+  });
+
+  // Copy URL to clipboard
+  btnCopy?.addEventListener("click", async () => {
+    const url = urlEl?.textContent?.trim() ?? "";
+    try {
+      await navigator.clipboard.writeText(url);
+      const original = btnCopy.textContent;
+      btnCopy.textContent = t("about.copied");
+      setTimeout(() => { btnCopy.textContent = original; }, 1800);
+    } catch {
+      // Fallback: select the text
+      if (urlEl) {
+        const sel = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(urlEl);
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      }
+    }
+  });
 }

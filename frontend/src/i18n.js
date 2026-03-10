@@ -158,6 +158,17 @@ const dictionaries = {
     "help.outdent": "Outdent list:",
     "help.outdentDesc": "{0} on a list line",
     "help.note": "Also supports full-width #1 and t3.",
+    // about
+    "about.menuLabel": "About",
+    "about.title": "About Sokki MD Editor",
+    "about.appName": "App",
+    "about.version": "Version",
+    "about.author": "Author",
+    "about.repository": "Repository",
+    "about.license": "License",
+    "about.copyUrl": "Copy",
+    "about.copied": "Copied!",
+    "about.close": "Close",
   },
   ja: {
     // header buttons
@@ -318,6 +329,17 @@ const dictionaries = {
     "help.outdent": "リストのアウトデント:",
     "help.outdentDesc": "リスト行で {0}",
     "help.note": "※全角の ＃１ や ｔ３ にも対応しています。",
+    // about
+    "about.menuLabel": "このアプリについて",
+    "about.title": "Sokki MD Editor について",
+    "about.appName": "アプリ名",
+    "about.version": "バージョン",
+    "about.author": "作成者",
+    "about.repository": "リポジトリ",
+    "about.license": "ライセンス",
+    "about.copyUrl": "コピー",
+    "about.copied": "コピーしました！",
+    "about.close": "閉じる",
   },
 };
 

@@ -57,6 +57,43 @@
                 <div id="toc-list"></div>
             </div>
         </div>
+        <div id="sidebar-about-footer">
+            <button id="btn-about" data-i18n="about.menuLabel">このアプリについて</button>
+        </div>
+    </div>
+
+    <!-- About Modal -->
+    <div id="about-modal" class="about-overlay" aria-modal="true" role="dialog">
+        <div class="about-dialog">
+            <div class="about-header">
+                <span class="about-title" data-i18n="about.title">About Sokki MD Editor</span>
+                <button id="about-close" class="about-close-btn" data-i18n-title="about.close" title="Close">&times;</button>
+            </div>
+            <div class="about-body">
+                <div class="about-app-name">Sokki MD Editor</div>
+                <table class="about-table">
+                    <tr>
+                        <th data-i18n="about.version">Version</th>
+                        <td>1.2.0</td>
+                    </tr>
+                    <tr>
+                        <th data-i18n="about.author">Author</th>
+                        <td>ponpaku</td>
+                    </tr>
+                    <tr>
+                        <th data-i18n="about.repository">Repository</th>
+                        <td>
+                            <span id="about-repo-url" class="about-url">https://github.com/ponpaku/sokki-MD-Editor</span>
+                            <button id="about-copy-url" class="about-copy-btn" data-i18n="about.copyUrl">Copy</button>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th data-i18n="about.license">License</th>
+                        <td>MIT</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
     </div>
 
     <div class="container">
