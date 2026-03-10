@@ -199,9 +199,19 @@ function initResizeHandle(handle) {
     const startY = e.clientY;
     const startHeight = recentArea.getBoundingClientRect().height;
 
+    // Compute max height = height needed to show all recent items
+    const recentCount = loadRecentFiles().length;
+    const firstItem = recentArea.querySelector(".recent-file-item");
+    const itemH = firstItem ? firstItem.getBoundingClientRect().height : 28;
+    const sectionHeader = recentArea.querySelector(".sidebar-section-header");
+    const headerH = sectionHeader ? sectionHeader.getBoundingClientRect().height : 28;
+    const maxHeight = recentCount > 0
+      ? Math.max(RECENT_HEIGHT_MIN, recentCount * itemH + headerH + 4)
+      : RECENT_HEIGHT_MIN;
+
     const onMouseMove = (e) => {
       const delta = startY - e.clientY; // drag up = increase height
-      const newHeight = Math.max(RECENT_HEIGHT_MIN, startHeight + delta);
+      const newHeight = Math.min(maxHeight, Math.max(RECENT_HEIGHT_MIN, startHeight + delta));
       recentArea.style.height = `${newHeight}px`;
     };
 
