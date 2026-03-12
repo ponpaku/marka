@@ -61,8 +61,10 @@
             0%, 100% { transform: translateY(0); }
             50%       { transform: translateY(-10px); }
         }
-        .icon-float {
-            animation: float 4s ease-in-out infinite;
+        .hero-icon {
+            opacity: 0;
+            /* fadeUp完了後(0.8s)からfloat開始 */
+            animation: fadeUp 0.7s ease 0.1s forwards, float 4s ease-in-out 0.8s infinite;
         }
 
         /* スクロールフェードイン */
@@ -102,7 +104,7 @@
     <!-- ヒーローセクション -->
     <header class="hero-bg border-b border-gray-200 min-h-screen flex items-center pt-16">
         <div class="max-w-5xl mx-auto px-6 py-12 text-center flex flex-col items-center w-full">
-            <img src="./icon.png" alt="Marka Logo" class="hero-item icon-float mx-auto w-32 h-32 md:w-40 md:h-40 mb-8">
+            <img src="./icon.png" alt="Marka Logo" class="hero-icon mx-auto w-32 h-32 md:w-40 md:h-40 mb-8">
 
             <h1 class="hero-item text-5xl md:text-7xl font-extrabold tracking-tight mb-6 text-gradient">Marka</h1>
             <p class="hero-item text-xl md:text-2xl text-gray-600 mb-10 font-medium max-w-2xl mx-auto leading-relaxed">
