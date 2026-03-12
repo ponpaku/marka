@@ -2,8 +2,8 @@ import { t } from "./i18n.js";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 
-const STORAGE_KEY = "sokki-preview-style";
-const STORAGE_PRESET_KEY = "sokki-preview-preset";
+const STORAGE_KEY = "marka-preview-style";
+const STORAGE_PRESET_KEY = "marka-preview-preset";
 
 const presets = {
   default: "",

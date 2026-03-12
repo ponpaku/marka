@@ -1,10 +1,10 @@
 [package]
-name = "sokki-md-editor"
+name = "marka"
 version = "1.2.0"
 edition = "2021"
 
 [lib]
-name = "sokki_md_editor_lib"
+name = "marka_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

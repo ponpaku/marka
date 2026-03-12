@@ -25,7 +25,7 @@ const dictionaries = {
     "conflict.keep": "Keep mine",
     // title
     "title.untitled": "Untitled",
-    "title.suffix": "Sokki MD Editor",
+    "title.suffix": "Marka",
     // export
     "btn.export": "Export",
     "export.word": "Word (.docx)",
@@ -114,7 +114,7 @@ const dictionaries = {
     "restore.ok": "Restore",
     "restore.cancel": "Discard",
     // help panel
-    "help.title": "Sokki MD Editor — Help",
+    "help.title": "Marka — Help",
     "help.groupQuick": "Quick Input",
     "help.groupList": "List Editing",
     "help.groupTable": "Table Editing",
@@ -159,7 +159,7 @@ const dictionaries = {
     "help.note": "Also supports full-width #1 and t3.",
     // about
     "about.menuLabel": "About",
-    "about.title": "About Sokki MD Editor",
+    "about.title": "About Marka",
     "about.appName": "App",
     "about.version": "Version",
     "about.author": "Author",
@@ -195,7 +195,7 @@ const dictionaries = {
     "conflict.keep": "このまま続ける",
     // title
     "title.untitled": "無題",
-    "title.suffix": "Sokki MD Editor",
+    "title.suffix": "Marka",
     // export
     "btn.export": "書き出し",
     "export.word": "Word (.docx)",
@@ -284,7 +284,7 @@ const dictionaries = {
     "restore.ok": "復元する",
     "restore.cancel": "破棄する",
     // help panel
-    "help.title": "Sokki MD Editor 使い方",
+    "help.title": "Marka 使い方",
     "help.groupQuick": "クイック入力",
     "help.groupList": "リスト操作",
     "help.groupTable": "表操作",
@@ -329,7 +329,7 @@ const dictionaries = {
     "help.note": "※全角の ＃１ や ｔ３ にも対応しています。",
     // about
     "about.menuLabel": "このアプリについて",
-    "about.title": "Sokki MD Editor について",
+    "about.title": "Marka について",
     "about.appName": "アプリ名",
     "about.version": "バージョン",
     "about.author": "作成者",
@@ -344,7 +344,7 @@ const dictionaries = {
 let currentLang = "en";
 
 function detectLang() {
-  const stored = localStorage.getItem("sokki-lang");
+  const stored = localStorage.getItem("marka-lang");
   if (stored && dictionaries[stored]) return stored;
   return navigator.language.startsWith("ja") ? "ja" : "en";
 }

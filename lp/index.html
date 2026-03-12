@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marka - 思考を止めない、流れるようなMarkdownエディター</title>
+    <meta name="description" content="速記に特化したシンプルで高速な Markdown エディター (Powered by Tauri v2)">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+        }
+        .hero-bg {
+            background: radial-gradient(circle at top, #f0f4f8 0%, #d9e2ec 100%);
+        }
+        .text-gradient {
+            background: linear-gradient(135deg, #102a43 0%, #243b53 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+    </style>
+</head>
+<body class="text-gray-800 antialiased bg-gray-50">
+
+    <!-- ナビゲーション -->
+    <nav class="absolute w-full top-0 py-6 px-8 flex justify-between items-center z-10">
+        <div class="font-bold text-xl text-gray-800 tracking-wider">Marka</div>
+        <a href="https://github.com/ponpaku/marka" target="_blank" class="text-gray-600 hover:text-gray-900 transition text-2xl">
+            <i class="fa-brands fa-github"></i>
+        </a>
+    </nav>
+
+    <!-- ヒーローセクション -->
+    <header class="hero-bg border-b border-gray-200 min-h-screen flex items-center pt-16">
+        <div class="max-w-5xl mx-auto px-6 py-12 text-center flex flex-col items-center w-full">
+            <img src="./icon.png" alt="Marka Logo" class="mx-auto w-32 h-32 md:w-40 md:h-40 rounded-3xl shadow-xl mb-8 transform transition hover:scale-105 duration-300">
+
+            <h1 class="text-5xl md:text-7xl font-extrabold tracking-tight mb-6 text-gradient">Marka</h1>
+            <p class="text-xl md:text-2xl text-gray-600 mb-10 font-medium max-w-2xl mx-auto leading-relaxed">
+                思考を止めない。<br class="sm:hidden">流れるように書く、<br>超軽量Markdownエディター。
+            </p>
+
+            <div class="flex justify-center gap-4 flex-col sm:flex-row w-full sm:w-auto">
+                <a href="https://github.com/ponpaku/marka/releases/latest" target="_blank" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-10 rounded-full transition duration-300 shadow-lg flex items-center justify-center text-lg">
+                    <i class="fa-solid fa-download mr-3"></i> 無料ダウンロード
+                </a>
+            </div>
+            <p class="mt-6 text-sm text-gray-500 font-medium">Windows / macOS 対応 | Powered by Tauri v2</p>
+        </div>
+    </header>
+
+    <!-- コンセプト・特徴セクション -->
+    <section class="max-w-5xl mx-auto px-6 py-24">
+        <div class="text-center mb-16">
+            <h2 class="text-3xl md:text-4xl font-bold text-gray-900 mb-4">速記のように、軽快に。</h2>
+            <p class="text-gray-600">Markaは、書くスピードと軽さに特化して開発されました。</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-10">
+            <!-- 特徴1 (青色) -->
+            <div class="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition group text-center">
+                <div class="w-16 h-16 mx-auto bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-6 text-2xl group-hover:bg-blue-600 group-hover:text-white transition duration-300">
+                    <i class="fa-solid fa-pen-nib"></i>
+                </div>
+                <h3 class="text-xl font-bold mb-3 text-gray-900">思考と直結するスピード</h3>
+                <p class="text-gray-600 text-sm leading-relaxed">
+                    会議の議事録やアイデア出しなど、とにかく素早く記録することにフォーカス。無駄な機能を削ぎ落としました。
+                </p>
+            </div>
+
+            <!-- 特徴2 (緑色) -->
+            <div class="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition group text-center">
+                <div class="w-16 h-16 mx-auto bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mb-6 text-2xl group-hover:bg-emerald-600 group-hover:text-white transition duration-300">
+                    <i class="fa-solid fa-feather-pointed"></i>
+                </div>
+                <h3 class="text-xl font-bold mb-3 text-gray-900">Tauriによる圧倒的軽さ</h3>
+                <p class="text-gray-600 text-sm leading-relaxed">
+                    最新の Tauri v2 を採用。Electron製アプリ特有のもっさり感がなく、ネイティブアプリのように一瞬で起動します。
+                </p>
+            </div>
+
+            <!-- 特徴3 (紫色) -->
+            <div class="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition group text-center">
+                <div class="w-16 h-16 mx-auto bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center mb-6 text-2xl group-hover:bg-purple-600 group-hover:text-white transition duration-300">
+                    <i class="fa-brands fa-markdown"></i>
+                </div>
+                <h3 class="text-xl font-bold mb-3 text-gray-900">Markdown ネイティブ</h3>
+                <p class="text-gray-600 text-sm leading-relaxed">
+                    タイピングしながらシームレスに書式を適用。キーボードから手を離さずに、美しいドキュメントを構築できます。
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ダウンロード手順セクション -->
+    <section class="bg-gray-900 text-white py-24">
+        <div class="max-w-3xl mx-auto px-6 text-center">
+            <h2 class="text-3xl font-bold mb-6">さあ、タイピングを始めよう。</h2>
+            <p class="text-gray-400 mb-10">
+                Markaはオープンソース（GitHub）で公開されています。今すぐ最新版をダウンロードして、快適なエディタ体験を手に入れてください。
+            </p>
+
+            <div class="bg-gray-800 border border-gray-700 rounded-2xl p-8 mb-10 text-left">
+                <h4 class="font-bold text-blue-400 mb-4 text-lg">インストール手順</h4>
+                <ul class="text-gray-300 space-y-4 text-sm md:text-base">
+                    <li class="flex items-start">
+                        <span class="bg-gray-700 text-gray-300 rounded-full w-6 h-6 flex items-center justify-center mr-3 flex-shrink-0 text-xs">1</span>
+                        <p>GitHubの <a href="https://github.com/ponpaku/marka/releases/latest" class="text-blue-400 hover:text-blue-300 underline">Releasesページ</a> から、お使いのOSに合ったファイル（.exe / .dmg）をダウンロード。</p>
+                    </li>
+                    <li class="flex items-start">
+                        <span class="bg-gray-700 text-gray-300 rounded-full w-6 h-6 flex items-center justify-center mr-3 flex-shrink-0 text-xs">2</span>
+                        <p>ダウンロードしたインストーラーを実行し、画面の指示に従います。</p>
+                    </li>
+                    <li class="flex items-start">
+                        <span class="bg-gray-700 text-gray-300 rounded-full w-6 h-6 flex items-center justify-center mr-3 flex-shrink-0 text-xs">3</span>
+                        <p>インストール完了後、Markaを起動してすぐに書き始められます。</p>
+                    </li>
+                </ul>
+            </div>
+
+            <a href="https://github.com/ponpaku/marka/issues" target="_blank" class="text-gray-400 hover:text-white transition font-medium border-b border-gray-600 pb-1 hover:border-white">
+                <i class="fa-solid fa-bug mr-2"></i>バグ報告・機能要望はこちら
+            </a>
+        </div>
+    </section>
+
+    <!-- フッター -->
+    <footer class="bg-gray-950 text-gray-500 py-10 text-center">
+        <div class="max-w-5xl mx-auto px-6">
+            <div class="flex justify-center items-center gap-2 mb-4">
+                <img src="./icon.png" alt="Marka Logo" class="w-6 h-6 rounded-md">
+                <span class="font-bold text-gray-300 tracking-wide">Marka</span>
+            </div>
+            <p class="mb-2 text-sm">Developed by <a href="https://github.com/ponpaku" target="_blank" class="text-gray-400 hover:text-white transition">ponpaku</a></p>
+            <p class="text-xs">&copy; 2026 ponpaku. All rights reserved.</p>
+        </div>
+    </footer>
+
+</body>
+</html>

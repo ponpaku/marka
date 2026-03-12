@@ -270,7 +270,7 @@ document.addEventListener("click", (e) => {
 function applyTheme(theme) {
   document.body.dataset.theme = theme;
   themeToggle.textContent = theme === "dark" ? "\u2600" : "\u263D";
-  localStorage.setItem("sokki-theme", theme);
+  localStorage.setItem("marka-theme", theme);
 }
 
 themeToggle.addEventListener("click", () => {
@@ -1509,7 +1509,7 @@ async function init() {
     },
   });
 
-  const savedTheme = localStorage.getItem("sokki-theme") || "light";
+  const savedTheme = localStorage.getItem("marka-theme") || "light";
   applyTheme(savedTheme);
 
   // External file change handler

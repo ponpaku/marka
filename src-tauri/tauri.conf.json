@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
-  "productName": "Sokki MD Editor",
+  "productName": "Marka",
   "version": "1.2.0",
-  "identifier": "com.sokki.md-editor",
+  "identifier": "com.marka.editor",
   "build": {
     "beforeDevCommand": "pnpm --dir frontend dev",
     "devUrl": "http://localhost:5173",
@@ -37,7 +37,7 @@
   "app": {
     "windows": [
       {
-        "title": "Sokki MD Editor",
+        "title": "Marka",
         "width": 1200,
         "height": 800
       }

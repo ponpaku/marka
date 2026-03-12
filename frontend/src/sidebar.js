@@ -4,12 +4,12 @@ import { join, dirname } from "@tauri-apps/api/path";
 import { getVersion } from "@tauri-apps/api/app";
 import { t } from "./i18n.js";
 
-const RECENT_KEY = "sokki-recent-files";
-const SIDEBAR_VISIBLE_KEY = "sokki-sidebar-visible";
-const SIDEBAR_TAB_KEY = "sokki-sidebar-tab";
-const WORKSPACE_FOLDERS_KEY = "sokki-workspace-folders";
-const RECENT_COLLAPSED_KEY = "sokki-recent-collapsed";
-const RECENT_HEIGHT_KEY = "sokki-recent-height";
+const RECENT_KEY = "marka-recent-files";
+const SIDEBAR_VISIBLE_KEY = "marka-sidebar-visible";
+const SIDEBAR_TAB_KEY = "marka-sidebar-tab";
+const WORKSPACE_FOLDERS_KEY = "marka-workspace-folders";
+const RECENT_COLLAPSED_KEY = "marka-recent-collapsed";
+const RECENT_HEIGHT_KEY = "marka-recent-height";
 const RECENT_MAX = 20;
 const RECENT_HEIGHT_DEFAULT = 200;
 const RECENT_HEIGHT_MIN = 60;
@@ -158,7 +158,7 @@ function renderFilesPanel() {
 }
 
 function buildFolderSection(folderPath, parentName = null) {
-  const collapseKey = `sokki-folder-collapsed-${folderPath}`;
+  const collapseKey = `marka-folder-collapsed-${folderPath}`;
   const collapsed = localStorage.getItem(collapseKey) === "true";
 
   const section = createSection({
@@ -1207,8 +1207,8 @@ function triggerFolderInlineRename(folderPath, label) {
       await rename(folderPath, newPath);
       updateRecentFileOrFolder(folderPath, newPath);
       // Migrate localStorage collapse key
-      const oldKey = `sokki-folder-collapsed-${folderPath}`;
-      const newKey = `sokki-folder-collapsed-${newPath}`;
+      const oldKey = `marka-folder-collapsed-${folderPath}`;
+      const newKey = `marka-folder-collapsed-${newPath}`;
       const val = localStorage.getItem(oldKey);
       if (val !== null) {
         localStorage.setItem(newKey, val);
@@ -1248,9 +1248,9 @@ function showStatus(msg) {
 function loadWorkspaceFolders() {
   try {
     // Migrate legacy single-folder key
-    const legacy = localStorage.getItem("sokki-workspace-folder");
+    const legacy = localStorage.getItem("marka-workspace-folder");
     if (legacy) {
-      localStorage.removeItem("sokki-workspace-folder");
+      localStorage.removeItem("marka-workspace-folder");
       const folders = [legacy];
       localStorage.setItem(WORKSPACE_FOLDERS_KEY, JSON.stringify(folders));
       return folders;
@@ -1284,7 +1284,7 @@ async function handleOpenWorkspace() {
 function handleCloseFolder(folderPath) {
   const folders = loadWorkspaceFolders().filter((p) => p !== folderPath);
   saveWorkspaceFolders(folders);
-  localStorage.removeItem(`sokki-folder-collapsed-${folderPath}`);
+  localStorage.removeItem(`marka-folder-collapsed-${folderPath}`);
   renderFilesPanel();
 }
 
