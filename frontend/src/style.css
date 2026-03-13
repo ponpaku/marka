@@ -196,20 +196,62 @@ header {
     height: 100%;
 }
 
-textarea {
-    width: 100%;
+#editor {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+}
+
+#editor .cm-editor {
     height: 100%;
-    border: none;
-    padding: 20px;
-    padding-bottom: 50vh;
+    background: transparent;
+}
+
+#editor .cm-scroller {
+    overflow: auto;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
     font-size: 16px;
     line-height: 1.6;
-    resize: none;
-    outline: none;
-    background-color: transparent;
+}
+
+#editor .cm-content,
+#editor .cm-gutter {
+    padding-top: 20px;
+    padding-bottom: 50vh;
+}
+
+#editor .cm-content {
+    min-height: 100%;
+    padding-left: 20px;
+    padding-right: 20px;
+    caret-color: var(--fg-editor);
     color: var(--fg-editor);
-    display: block;
+}
+
+#editor .cm-line {
+    padding: 0;
+}
+
+#editor .cm-focused {
+    outline: none;
+}
+
+#editor .cm-cursor,
+#editor .cm-dropCursor {
+    border-left-color: var(--fg-editor);
+}
+
+#editor .cm-selectionBackground,
+#editor.cm-focused .cm-selectionBackground,
+#editor .cm-content ::selection {
+    background: color-mix(in srgb, var(--fg-editor) 22%, transparent);
+}
+
+#editor-pane[data-placeholder]:not([data-has-content="true"]) #editor .cm-content::before {
+    content: attr(data-placeholder);
+    color: var(--fg-status);
+    position: absolute;
+    pointer-events: none;
 }
 
 /* Preview Styles */

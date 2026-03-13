@@ -1,4 +1,4 @@
-import { marked } from "marked";
+import morphdom from "morphdom";
 import "./style.css";
 import { actionOpen, actionSave, actionPickSaveAsPath } from "./file-ops.js";
 import { scheduleSave, cancelScheduledSave, clearSnapshot, checkRestore } from "./autosave.js";
@@ -10,10 +10,12 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { readTextFile } from "@tauri-apps/plugin-fs";
-import { resolvePreviewImages } from "./image-resolver.js";
 import { startWatching, stopWatching, suppressNextChange, clearSuppression, setExternalChangeHandler } from "./file-watcher.js";
 import { initSidebar, updateTOC, addToRecentFiles } from "./sidebar.js";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { createEditorAdapter } from "./editor-adapter.js";
+import { renderPreviewWithMap } from "./preview-renderer.js";
+import { createScrollSync } from "./scroll-sync.js";
 import {
   findListContext,
   findParentListItem,
@@ -28,7 +30,7 @@ import {
 } from "./editor-logic.js";
 
 // --- DOM Elements ---
-const editor = document.getElementById("editor");
+const editorHost = document.getElementById("editor");
 const preview = document.getElementById("preview-pane");
 const status = document.getElementById("status");
 const helpToggle = document.getElementById("help-toggle");
@@ -45,6 +47,36 @@ const exportTxtBtn = document.getElementById("export-txt");
 const exportPdfBtn = document.getElementById("export-pdf");
 const exportHtmlBtn = document.getElementById("export-html");
 const exportPrintBtn = document.getElementById("export-print");
+const editorPane = document.getElementById("editor-pane");
+
+let scrollSync = null;
+let currentPreviewSegments = [];
+let suppressEditorSyncUntil = 0;
+
+function suppressEditorAutoSync(durationMs = 180) {
+  suppressEditorSyncUntil = performance.now() + durationMs;
+}
+
+function isEditorAutoSyncSuppressed() {
+  return performance.now() < suppressEditorSyncUntil;
+}
+
+function updateEditorPlaceholderState() {
+  if (!editorPane) return;
+  editorPane.dataset.placeholder = t("editor.placeholder");
+  editorPane.dataset.hasContent = editor.value.length > 0 ? "true" : "false";
+}
+
+const editor = createEditorAdapter(editorHost, {
+  onUpdate(update) {
+    updateEditorPlaceholderState();
+    if (!scrollSync) return;
+    if (update.selectionSet && !update.docChanged) {
+      scrollSync.setActivePane("editor");
+      scrollSync.scheduleFromEditor("selection");
+    }
+  },
+});
 
 // --- App State ---
 export const state = {
@@ -148,7 +180,7 @@ function handleNativeInputChange(e) {
   }
   pendingInputType = "unknown";
   lastKnownSnapshot = currentSnapshot;
-  updatePreview();
+  schedulePreviewUpdate();
   markDirty();
 }
 
@@ -191,17 +223,40 @@ function setUnknownDirtyValue() {
 }
 
 // --- Markdown Rendering ---
-export function updatePreview() {
-  let html = marked.parse(editor.value);
-  html = resolvePreviewImages(html, state.currentPath);
-  // チェックボックスに data-index を付与し disabled を除去
-  let cbIndex = 0;
-  html = html.replace(/<input [^>]*type="checkbox"[^>]*>/g, (match) => {
-    const checked = match.includes("checked");
-    return `<input type="checkbox" data-index="${cbIndex++}"${checked ? " checked" : ""}>`;
-  });
-  preview.innerHTML = html;
-  updateTOC(editor.value);
+function applyHtmlToPreview({ html, segments }, syncSource = "active") {
+  const tmp = document.createElement("div");
+  tmp.innerHTML = html;
+  morphdom(preview, tmp, { childrenOnly: true });
+  currentPreviewSegments = segments;
+  scrollSync?.refreshPreviewMap();
+  if (syncSource === "editor" && isEditorAutoSyncSuppressed()) {
+    bindDeferredPreviewMeasurements("none");
+    return;
+  }
+  if (syncSource === "editor") {
+    scrollSync?.setActivePane("editor");
+    scrollSync?.scheduleFromEditor("selection");
+  } else if (syncSource === "preview") {
+    scrollSync?.setActivePane("preview");
+    scrollSync?.scheduleFromPreview();
+  } else {
+    scrollSync?.scheduleFromActivePane();
+  }
+  bindDeferredPreviewMeasurements(syncSource);
+}
+
+function schedulePreviewUpdate() {
+  const markdown = editor.value;
+  const currentPath = state.currentPath;
+  applyHtmlToPreview(renderPreviewWithMap(markdown, currentPath), "editor");
+  updateTOC(markdown);
+}
+
+export async function updatePreview(syncSource = "editor") {
+  const markdown = editor.value;
+  const currentPath = state.currentPath;
+  updateTOC(markdown);
+  applyHtmlToPreview(renderPreviewWithMap(markdown, currentPath), syncSource);
 }
 
 // --- Status ---
@@ -271,6 +326,9 @@ function applyTheme(theme) {
   document.body.dataset.theme = theme;
   themeToggle.textContent = theme === "dark" ? "\u2600" : "\u263D";
   localStorage.setItem("marka-theme", theme);
+  requestAnimationFrame(() => {
+    scrollSync?.scheduleFromActivePane();
+  });
 }
 
 themeToggle.addEventListener("click", () => {
@@ -1284,6 +1342,7 @@ exportPrintBtn.addEventListener("click", handlePrint);
 
 // --- Keyboard Event Handler ---
 editor.addEventListener("keydown", (e) => {
+  scrollSync?.setActivePane("editor");
   if (e.ctrlKey || e.metaKey) {
     const key = e.key.toLowerCase();
     if (key === "enter") {
@@ -1350,6 +1409,7 @@ editor.addEventListener("keydown", (e) => {
   }
 
   if (e.key === "Enter") {
+    suppressEditorAutoSync();
     if (e.shiftKey) {
       e.preventDefault();
       const continuationIndent = getShiftEnterContinuationIndent(editor.value, editor.selectionStart);
@@ -1362,6 +1422,7 @@ editor.addEventListener("keydown", (e) => {
 
 // --- User Input ---
 editor.addEventListener("beforeinput", (e) => {
+  scrollSync?.setActivePane("editor");
   const inputType = typeof e?.inputType === "string" ? e.inputType : "unknown";
   pendingInputType = inputType;
   if (inputType !== "historyUndo" && inputType !== "historyRedo") return;
@@ -1376,47 +1437,89 @@ editor.addEventListener("beforeinput", (e) => {
 });
 
 editor.addEventListener("input", (e) => {
+  scrollSync?.setActivePane("editor");
   handleNativeInputChange(e);
 });
 
 // --- Scroll Sync ---
-let activePane = null;
-
-editor.addEventListener("mouseover", () => {
-  activePane = editor;
-});
-preview.addEventListener("mouseover", () => {
-  activePane = preview;
-});
-
-editor.addEventListener("scroll", () => {
-  if (activePane === editor) {
-    const percentage =
-      editor.scrollTop / (editor.scrollHeight - editor.clientHeight);
-    if (isFinite(percentage)) {
-      preview.scrollTop =
-        percentage * (preview.scrollHeight - preview.clientHeight);
-    }
-  }
-});
-
-preview.addEventListener("scroll", () => {
-  if (activePane === preview) {
-    const percentage =
-      preview.scrollTop / (preview.scrollHeight - preview.clientHeight);
-    if (isFinite(percentage)) {
-      editor.scrollTop =
-        percentage * (editor.scrollHeight - editor.clientHeight);
-    }
-  }
-});
-
-// --- Draggable Divider ---
 const divider = document.getElementById("divider");
-const editorPane = document.getElementById("editor-pane");
 const previewWrapper = document.getElementById("preview-wrapper");
 const container = document.querySelector(".container");
 
+scrollSync = createScrollSync({
+  editor,
+  preview,
+  getSegments: () => currentPreviewSegments,
+});
+
+let deferredMeasureFrame = 0;
+function scheduleDeferredSync(syncSource = "active") {
+  if (!scrollSync) return;
+  if (syncSource === "none") return;
+  if (syncSource === "editor" && isEditorAutoSyncSuppressed()) return;
+  if (syncSource === "editor") {
+    scrollSync.setActivePane("editor");
+    scrollSync.scheduleFromEditor("scroll");
+    return;
+  }
+  if (syncSource === "preview") {
+    scrollSync.setActivePane("preview");
+    scrollSync.scheduleFromPreview();
+    return;
+  }
+  scrollSync.scheduleFromActivePane();
+}
+
+function bindDeferredPreviewMeasurements(syncSource = "active") {
+  preview.querySelectorAll("img").forEach((img) => {
+    if (!img.complete) {
+      img.addEventListener("load", () => scheduleDeferredSync(syncSource), { once: true });
+      img.addEventListener("error", () => scheduleDeferredSync(syncSource), { once: true });
+    }
+  });
+  if (deferredMeasureFrame) cancelAnimationFrame(deferredMeasureFrame);
+  deferredMeasureFrame = requestAnimationFrame(() => {
+    deferredMeasureFrame = 0;
+    scheduleDeferredSync(syncSource);
+  });
+}
+
+editor.addEventListener("pointerdown", () => {
+  scrollSync.setActivePane("editor");
+});
+editor.addEventListener("wheel", () => {
+  scrollSync.setActivePane("editor");
+});
+editor.addEventListener("focus", () => {
+  scrollSync.setActivePane("editor");
+});
+preview.addEventListener("pointerdown", () => {
+  scrollSync.setActivePane("preview");
+});
+preview.addEventListener("wheel", () => {
+  scrollSync.setActivePane("preview");
+});
+
+editor.addEventListener("scroll", () => {
+  if (scrollSync.shouldIgnorePaneScroll("editor")) return;
+  scrollSync.scheduleFromEditor("scroll");
+});
+
+preview.addEventListener("scroll", () => {
+  if (scrollSync.shouldIgnorePaneScroll("preview")) return;
+  scrollSync.scheduleFromPreview();
+});
+
+const layoutObserver = new ResizeObserver(() => {
+  scheduleDeferredSync();
+});
+layoutObserver.observe(editorHost);
+layoutObserver.observe(previewWrapper);
+layoutObserver.observe(container);
+window.addEventListener("resize", scheduleDeferredSync);
+document.addEventListener("preview-style-change", scheduleDeferredSync);
+
+// --- Draggable Divider ---
 divider.addEventListener("mousedown", (e) => {
   e.preventDefault();
   divider.classList.add("dragging");
@@ -1429,11 +1532,13 @@ divider.addEventListener("mousedown", (e) => {
     previewWrapper.style.flex = "none";
     editorPane.style.width = `${ratio * total}px`;
     previewWrapper.style.width = `${(1 - ratio) * total}px`;
+    scheduleDeferredSync();
   };
   const onMouseUp = () => {
     divider.classList.remove("dragging");
     document.removeEventListener("mousemove", onMouseMove);
     document.removeEventListener("mouseup", onMouseUp);
+    scheduleDeferredSync();
   };
   document.addEventListener("mousemove", onMouseMove);
   document.addEventListener("mouseup", onMouseUp);

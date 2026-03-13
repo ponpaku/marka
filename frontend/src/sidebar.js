@@ -443,11 +443,16 @@ function scrollToHeading(headingText, level, occurrence = 0) {
         if (matchCount === occurrence) {
           editor.focus();
           editor.setSelectionRange(charPos, charPos + line.length);
-          const computedLineHeight = getComputedStyle(editor).lineHeight;
+          const metricsTarget = editor.scrollDOM || editor.dom || document.getElementById("editor");
+          const computedLineHeight = metricsTarget ? getComputedStyle(metricsTarget).lineHeight : "";
           const lineHeight = parseFloat(computedLineHeight) ||
-            parseFloat(getComputedStyle(editor).fontSize) * 1.6;
+            parseFloat(metricsTarget ? getComputedStyle(metricsTarget).fontSize : "16") * 1.6;
           const lineIndex = value.substring(0, charPos).split("\n").length - 1;
-          editor.scrollTop = lineIndex * lineHeight - editor.clientHeight / 3;
+          if (typeof editor.scrollToAbsoluteY === "function") {
+            editor.scrollToAbsoluteY(lineIndex * lineHeight, editor.clientHeight / 3);
+          } else {
+            editor.scrollTop = lineIndex * lineHeight - editor.clientHeight / 3;
+          }
           break;
         }
         matchCount++;
