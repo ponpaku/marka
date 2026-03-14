@@ -1,5 +1,6 @@
 use std::sync::Mutex;
 use tauri::{Emitter, Manager};
+use pulldown_cmark::{html, Options, Parser};
 
 struct InitialFile(Mutex<Option<String>>);
 
@@ -20,6 +21,20 @@ fn get_initial_file(state: tauri::State<'_, InitialFile>) -> Option<String> {
     state.0.lock().unwrap().take()
 }
 
+#[tauri::command]
+fn render_markdown(markdown: String) -> String {
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TASKLISTS);
+    options.insert(Options::ENABLE_GFM);
+
+    let parser = Parser::new_ext(&markdown, options);
+    let mut html_output = String::with_capacity(markdown.len() * 2);
+    html::push_html(&mut html_output, parser);
+    html_output
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -38,7 +53,7 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_opener::init())
         .manage(InitialFile(Mutex::new(None)))
-        .invoke_handler(tauri::generate_handler![get_initial_file])
+        .invoke_handler(tauri::generate_handler![get_initial_file, render_markdown])
         .setup(|app| {
             let args: Vec<String> = std::env::args().collect();
             if let Some(path) = find_md_arg(&args) {
