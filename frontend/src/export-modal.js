@@ -1,5 +1,4 @@
 import { marked } from "marked";
-import html2pdf from "html2pdf.js";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
 import { t } from "./i18n.js";
@@ -312,6 +311,7 @@ async function doExport() {
     ${html}
   </div>`;
 
+  const { default: html2pdf } = await import("html2pdf.js");
   const pdfBlob = await html2pdf()
     .set({
       margin: [opts.marginTop, opts.marginRight, opts.marginBottom, opts.marginLeft],

@@ -1,20 +1,25 @@
 import { marked } from "marked";
-import {
-  Document,
-  Packer,
-  Paragraph,
-  TextRun,
-  HeadingLevel,
-  LevelFormat,
-  LevelSuffix,
-  AlignmentType,
-  Table,
-  TableRow,
-  TableCell,
-  WidthType,
-  BorderStyle,
-} from "docx";
 import { save } from "@tauri-apps/plugin-dialog";
+
+// docx は DOCX エクスポート時にのみ必要なため遅延ロード
+let Document, Packer, Paragraph, TextRun, HeadingLevel, LevelFormat, LevelSuffix,
+    AlignmentType, Table, TableRow, TableCell, WidthType, BorderStyle;
+let HEADING_LEVELS;
+let _docxLoaded = false;
+async function ensureDocx() {
+  if (_docxLoaded) return;
+  ({ Document, Packer, Paragraph, TextRun, HeadingLevel, LevelFormat, LevelSuffix,
+     AlignmentType, Table, TableRow, TableCell, WidthType, BorderStyle } = await import("docx"));
+  HEADING_LEVELS = [
+    HeadingLevel.HEADING_1,
+    HeadingLevel.HEADING_2,
+    HeadingLevel.HEADING_3,
+    HeadingLevel.HEADING_4,
+    HeadingLevel.HEADING_5,
+    HeadingLevel.HEADING_6,
+  ];
+  _docxLoaded = true;
+}
 import { writeFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { t } from "./i18n.js";
 import { resolveExportImages } from "./image-resolver.js";
@@ -155,15 +160,6 @@ function parseMarkdownTable(block) {
     columnWidths: Array(colCount).fill(cellWidth),
   });
 }
-const HEADING_LEVELS = [
-  HeadingLevel.HEADING_1,
-  HeadingLevel.HEADING_2,
-  HeadingLevel.HEADING_3,
-  HeadingLevel.HEADING_4,
-  HeadingLevel.HEADING_5,
-  HeadingLevel.HEADING_6,
-];
-
 const MAX_LIST_LEVEL = 8;
 
 function clampListLevel(level) {
@@ -371,6 +367,7 @@ export async function exportDocx(md, currentPath) {
   });
   if (!path) return null;
 
+  await ensureDocx();
   const doc = markdownToDocx(md);
   const arrayBuffer = await Packer.toArrayBuffer(doc);
   await writeFile(path, new Uint8Array(arrayBuffer));
