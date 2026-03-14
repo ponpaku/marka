@@ -5,6 +5,7 @@ const dictionaries = {
     "btn.open": "Open",
     "btn.save": "Save",
     "btn.saveAs": "Save As",
+    "settings.open": "Open settings",
     "btn.themeToggle": "Toggle theme",
     "sidebar.toggleTitle": "Toggle Sidebar",
     // editor
@@ -170,6 +171,17 @@ const dictionaries = {
     "about.copyUrl": "Copy",
     "about.copied": "Copied!",
     "about.close": "Close",
+    // settings
+    "settings.title": "Settings",
+    "settings.close": "Close",
+    "settings.editor": "Editor",
+    "settings.interface": "Interface",
+    "settings.fontSize": "Font Size",
+    "settings.lineNumbers": "Show line numbers",
+    "settings.lineWrapping": "Enable line wrapping",
+    "settings.language": "UI Language",
+    "settings.languageJapanese": "Japanese",
+    "settings.languageEnglish": "English",
   },
   ja: {
     // header buttons
@@ -177,6 +189,7 @@ const dictionaries = {
     "btn.open": "開く",
     "btn.save": "保存",
     "btn.saveAs": "名前を付けて保存",
+    "settings.open": "設定を開く",
     "btn.themeToggle": "テーマ切替",
     "sidebar.toggleTitle": "サイドバーを切替",
     // editor
@@ -342,6 +355,17 @@ const dictionaries = {
     "about.copyUrl": "コピー",
     "about.copied": "コピーしました！",
     "about.close": "閉じる",
+    // settings
+    "settings.title": "設定",
+    "settings.close": "閉じる",
+    "settings.editor": "エディタ",
+    "settings.interface": "インターフェース",
+    "settings.fontSize": "フォントサイズ",
+    "settings.lineNumbers": "行番号を表示",
+    "settings.lineWrapping": "行を折り返す",
+    "settings.language": "UI言語",
+    "settings.languageJapanese": "日本語",
+    "settings.languageEnglish": "英語",
   },
 };
 
@@ -382,6 +406,16 @@ export function getLang() {
   return currentLang;
 }
 
+export function setLang(lang, { persist = true } = {}) {
+  if (!dictionaries[lang]) return currentLang;
+  currentLang = lang;
+  if (persist) {
+    localStorage.setItem("marka-lang", lang);
+  }
+  document.documentElement.lang = lang;
+  return currentLang;
+}
+
 export function getCodeMirrorPhrases() {
   return codeMirrorPhrases[currentLang] || {};
 }
@@ -396,6 +430,7 @@ export function t(key, ...args) {
 }
 
 export function applyTranslations() {
+  document.documentElement.lang = currentLang;
   document.querySelectorAll("[data-i18n]").forEach((el) => {
     el.textContent = t(el.dataset.i18n);
   });

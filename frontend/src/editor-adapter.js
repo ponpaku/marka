@@ -1,4 +1,4 @@
-import { EditorState, Transaction } from "@codemirror/state";
+import { Compartment, EditorState, Transaction } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import { markdown } from "@codemirror/lang-markdown";
 import { openSearchPanel, closeSearchPanel, search, searchKeymap } from "@codemirror/search";
@@ -10,6 +10,9 @@ function clamp(value, min, max) {
 
 export function createEditorAdapter(host, { onUpdate } = {}) {
   const domListeners = new Map();
+  const phrasesCompartment = new Compartment();
+  const lineNumbersCompartment = new Compartment();
+  const lineWrappingCompartment = new Compartment();
   let view = null;
 
   const toggleSearchPanel = (v) => {
@@ -72,9 +75,9 @@ export function createEditorAdapter(host, { onUpdate } = {}) {
       doc: "",
       extensions: [
         markdown(),
-        EditorState.phrases.of(getCodeMirrorPhrases()),
-        lineNumbers(),
-        EditorView.lineWrapping,
+        phrasesCompartment.of(EditorState.phrases.of(getCodeMirrorPhrases())),
+        lineNumbersCompartment.of(lineNumbers()),
+        lineWrappingCompartment.of(EditorView.lineWrapping),
         search({ top: true }),
         keymap.of([
           { key: "Mod-f", run: toggleSearchPanel },
@@ -173,6 +176,21 @@ export function createEditorAdapter(host, { onUpdate } = {}) {
     },
     getLineCount() {
       return view.state.doc.lines;
+    },
+    setPhrases(phrases = {}) {
+      view.dispatch({
+        effects: phrasesCompartment.reconfigure(EditorState.phrases.of(phrases)),
+      });
+    },
+    setLineNumbersVisible(visible) {
+      view.dispatch({
+        effects: lineNumbersCompartment.reconfigure(visible ? lineNumbers() : []),
+      });
+    },
+    setLineWrappingEnabled(enabled) {
+      view.dispatch({
+        effects: lineWrappingCompartment.reconfigure(enabled ? EditorView.lineWrapping : []),
+      });
     },
   };
 

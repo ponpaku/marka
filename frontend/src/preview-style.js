@@ -107,6 +107,12 @@ export function initPreviewStylePanel() {
   });
 }
 
+export function refreshPreviewStylePanel() {
+  const panel = document.getElementById("preview-style-panel");
+  if (!panel) return;
+  renderPanel(panel);
+}
+
 function renderPanel(panel) {
   const presetKeys = Object.keys(presets);
 

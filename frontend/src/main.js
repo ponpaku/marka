@@ -2,20 +2,26 @@ import morphdom from "morphdom";
 import "./style.css";
 import { actionOpen, actionSave, actionPickSaveAsPath } from "./file-ops.js";
 import { scheduleSave, cancelScheduledSave, clearSnapshot, checkRestore } from "./autosave.js";
-import { t, applyTranslations, renderHelp } from "./i18n.js";
-import { exportDocx, exportTxt, exportHtml } from "./export.js";
-import { openExportModal } from "./export-modal.js";
-import { loadSavedStyle, initPreviewStylePanel } from "./preview-style.js";
+import { t, applyTranslations, renderHelp, getLang, getCodeMirrorPhrases, setLang } from "./i18n.js";
+import { loadSavedStyle, initPreviewStylePanel, refreshPreviewStylePanel } from "./preview-style.js";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import { startWatching, stopWatching, suppressNextChange, clearSuppression, setExternalChangeHandler } from "./file-watcher.js";
-import { initSidebar, updateTOC, addToRecentFiles } from "./sidebar.js";
+import { initSidebar, updateTOC, addToRecentFiles, refreshSidebarTranslations } from "./sidebar.js";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { createEditorAdapter } from "./editor-adapter.js";
 import { renderPreviewWithMap } from "./preview-renderer.js";
 import { createScrollSync } from "./scroll-sync.js";
+import { FONT_SIZE_RANGE, loadSettings, normalizeSettings, saveSettings } from "./settings.js";
+import {
+  classifyDocumentSize,
+  getNativeEditCoalesceWindowMs,
+  getPreviewDelayMs,
+  getTypingPreviewSyncSource,
+  trimHistoryStack,
+} from "./perf-policy.js";
 import {
   findListContext,
   findParentListItem,
@@ -40,6 +46,7 @@ const btnOpen = document.getElementById("btn-open");
 const btnSave = document.getElementById("btn-save");
 const btnSaveAs = document.getElementById("btn-save-as");
 const themeToggle = document.getElementById("theme-toggle");
+const btnSettings = document.getElementById("btn-settings");
 const btnExport = document.getElementById("btn-export");
 const exportDropdown = document.getElementById("export-dropdown");
 const exportDocxBtn = document.getElementById("export-docx");
@@ -50,10 +57,69 @@ const exportPrintBtn = document.getElementById("export-print");
 const editorPane = document.getElementById("editor-pane");
 const btnSearch = document.getElementById("btn-search");
 const editorCharCount = document.getElementById("editor-char-count");
+const settingsModal = document.getElementById("settings-modal");
+const settingsClose = document.getElementById("settings-close");
+const settingsFontSize = document.getElementById("settings-font-size");
+const settingsFontSizeValue = document.getElementById("settings-font-size-value");
+const settingsLanguage = document.getElementById("settings-language");
+const settingsLineNumbers = document.getElementById("settings-line-numbers");
+const settingsLineWrapping = document.getElementById("settings-line-wrapping");
 
 let scrollSync = null;
 let currentPreviewSegments = [];
 let suppressEditorSyncUntil = 0;
+let lastPreviewHtml = "";
+let appSettings = loadSettings();
+let exportModulePromise = null;
+let exportModalPromise = null;
+let scheduledPreviewTimeout = 0;
+let scheduledPreviewIdle = 0;
+let scheduledPreviewState = null;
+
+const canUseIdleCallback = typeof window.requestIdleCallback === "function";
+const cancelIdleCallbackCompat = (id) => {
+  if (!id || typeof window.cancelIdleCallback !== "function") return;
+  window.cancelIdleCallback(id);
+};
+
+const previewPerf = {
+  samples: [],
+  record(sample) {
+    this.samples.push(sample);
+    if (this.samples.length > 40) this.samples.shift();
+  },
+  snapshot() {
+    if (this.samples.length === 0) {
+      return {
+        sampleCount: 0,
+        averageRenderMs: 0,
+        averagePatchMs: 0,
+        averageTotalMs: 0,
+        maxTotalMs: 0,
+      };
+    }
+    const totals = this.samples.reduce((acc, sample) => {
+      acc.render += sample.renderMs;
+      acc.patch += sample.patchMs;
+      acc.total += sample.totalMs;
+      acc.maxTotal = Math.max(acc.maxTotal, sample.totalMs);
+      return acc;
+    }, { render: 0, patch: 0, total: 0, maxTotal: 0 });
+    return {
+      sampleCount: this.samples.length,
+      averageRenderMs: totals.render / this.samples.length,
+      averagePatchMs: totals.patch / this.samples.length,
+      averageTotalMs: totals.total / this.samples.length,
+      maxTotalMs: totals.maxTotal,
+      last: this.samples[this.samples.length - 1],
+    };
+  },
+  clear() {
+    this.samples.length = 0;
+  },
+};
+
+window.__MARKA_PERF__ = previewPerf;
 
 function suppressEditorAutoSync(durationMs = 180) {
   suppressEditorSyncUntil = performance.now() + durationMs;
@@ -72,6 +138,64 @@ function updateEditorPlaceholderState() {
 function updateEditorFooter() {
   if (!editorCharCount) return;
   editorCharCount.textContent = t("footer.charCount", editor.value.length.toLocaleString());
+}
+
+function syncSettingsControls() {
+  if (settingsFontSize) settingsFontSize.value = String(appSettings.fontSize);
+  if (settingsFontSizeValue) settingsFontSizeValue.textContent = `${appSettings.fontSize}px`;
+  if (settingsLanguage) settingsLanguage.value = appSettings.uiLanguage;
+  if (settingsLineNumbers) settingsLineNumbers.checked = appSettings.showLineNumbers;
+  if (settingsLineWrapping) settingsLineWrapping.checked = appSettings.lineWrapping;
+}
+
+function refreshLanguageDependentUi() {
+  applyTranslations();
+  renderHelp();
+  refreshSidebarTranslations(editor.value);
+  refreshPreviewStylePanel();
+  updateEditorPlaceholderState();
+  updateEditorFooter();
+  updateTitle();
+}
+
+function applySettings(nextSettings, { persist = true } = {}) {
+  appSettings = persist
+    ? saveSettings(nextSettings)
+    : normalizeSettings({ ...appSettings, ...nextSettings });
+
+  const previousLang = getLang();
+  setLang(appSettings.uiLanguage, { persist: false });
+  editor.setPhrases(getCodeMirrorPhrases());
+  editor.setLineNumbersVisible(appSettings.showLineNumbers);
+  editor.setLineWrappingEnabled(appSettings.lineWrapping);
+  document.documentElement.style.setProperty("--editor-font-size", `${appSettings.fontSize}px`);
+  syncSettingsControls();
+
+  if (previousLang !== appSettings.uiLanguage) {
+    refreshLanguageDependentUi();
+  }
+
+  requestAnimationFrame(() => {
+    scrollSync?.scheduleFromActivePane();
+  });
+}
+
+function openSettingsModal() {
+  settingsModal?.classList.add("open");
+}
+
+function closeSettingsModal() {
+  settingsModal?.classList.remove("open");
+}
+
+function loadExportModule() {
+  exportModulePromise ??= import("./export.js");
+  return exportModulePromise;
+}
+
+function loadExportModalModule() {
+  exportModalPromise ??= import("./export-modal.js");
+  return exportModalPromise;
 }
 
 const editor = createEditorAdapter(editorHost, {
@@ -93,13 +217,16 @@ export const state = {
   lastSavedAt: null,
 };
 
-const HISTORY_LIMIT = 200;
 const undoStack = [];
 const redoStack = [];
 let lastKnownSnapshot = null;
 let cleanValue = "";
 let nativeEditGroup = null;
 let pendingInputType = "unknown";
+
+function getDocumentProfile(text = editor.value) {
+  return classifyDocumentSize(text, editor.getLineCount());
+}
 
 function captureEditorSnapshot() {
   return {
@@ -124,13 +251,13 @@ function applyEditorSnapshot(snapshot) {
   editor.selectionEnd = Math.min(snapshot.end, maxPos);
 }
 
-function pushHistory(stack, snapshot) {
+function pushHistory(stack, snapshot, referenceText = snapshot?.value ?? editor.value) {
   if (stack.length > 0 && stack[stack.length - 1].value === snapshot.value) {
     stack[stack.length - 1] = cloneSnapshot(snapshot);
     return;
   }
   stack.push(cloneSnapshot(snapshot));
-  if (stack.length > HISTORY_LIMIT) stack.shift();
+  trimHistoryStack(stack, referenceText);
 }
 
 function resetEditorHistory() {
@@ -147,7 +274,7 @@ function commitProgrammaticEdit(beforeSnapshot) {
     lastKnownSnapshot = currentSnapshot;
     return false;
   }
-  pushHistory(undoStack, beforeSnapshot);
+  pushHistory(undoStack, beforeSnapshot, currentSnapshot.value);
   redoStack.length = 0;
   lastKnownSnapshot = currentSnapshot;
   nativeEditGroup = null;
@@ -158,6 +285,7 @@ function commitProgrammaticEdit(beforeSnapshot) {
 
 function handleNativeInputChange(e) {
   const currentSnapshot = captureEditorSnapshot();
+  const documentProfile = getDocumentProfile(currentSnapshot.value);
   if (lastKnownSnapshot && currentSnapshot.value !== lastKnownSnapshot.value) {
     const now = Date.now();
     const inputType =
@@ -174,9 +302,15 @@ function handleNativeInputChange(e) {
       markDirty();
       return;
     }
-    const canCoalesce = shouldCoalesceNativeEdit(nativeEditGroup, inputType, now - (nativeEditGroup?.lastAt || 0));
+    const coalesceWindowMs = getNativeEditCoalesceWindowMs(documentProfile);
+    const canCoalesce = shouldCoalesceNativeEdit(
+      nativeEditGroup,
+      inputType,
+      now - (nativeEditGroup?.lastAt || 0),
+      coalesceWindowMs,
+    );
     if (!canCoalesce) {
-      pushHistory(undoStack, lastKnownSnapshot);
+      pushHistory(undoStack, lastKnownSnapshot, currentSnapshot.value);
       redoStack.length = 0;
       nativeEditGroup = {
         inputType,
@@ -188,7 +322,7 @@ function handleNativeInputChange(e) {
   }
   pendingInputType = "unknown";
   lastKnownSnapshot = currentSnapshot;
-  schedulePreviewUpdate();
+  schedulePreviewUpdate("input");
   markDirty();
 }
 
@@ -196,7 +330,7 @@ function handleUndo() {
   if (undoStack.length === 0) return false;
   const currentSnapshot = captureEditorSnapshot();
   const previousSnapshot = undoStack.pop();
-  pushHistory(redoStack, currentSnapshot);
+  pushHistory(redoStack, currentSnapshot, previousSnapshot.value);
   applyEditorSnapshot(previousSnapshot);
   lastKnownSnapshot = captureEditorSnapshot();
   nativeEditGroup = null;
@@ -209,7 +343,7 @@ function handleRedo() {
   if (redoStack.length === 0) return false;
   const currentSnapshot = captureEditorSnapshot();
   const nextSnapshot = redoStack.pop();
-  pushHistory(undoStack, currentSnapshot);
+  pushHistory(undoStack, currentSnapshot, nextSnapshot.value);
   applyEditorSnapshot(nextSnapshot);
   lastKnownSnapshot = captureEditorSnapshot();
   nativeEditGroup = null;
@@ -232,14 +366,20 @@ function setUnknownDirtyValue() {
 
 // --- Markdown Rendering ---
 function applyHtmlToPreview({ html, segments }, syncSource = "active") {
-  const tmp = document.createElement("div");
-  tmp.innerHTML = html;
-  morphdom(preview, tmp, { childrenOnly: true });
+  let patchMs = 0;
+  if (html !== lastPreviewHtml) {
+    const tmp = document.createElement("div");
+    tmp.innerHTML = html;
+    const patchStartedAt = performance.now();
+    morphdom(preview, tmp, { childrenOnly: true });
+    patchMs = performance.now() - patchStartedAt;
+    lastPreviewHtml = html;
+  }
   currentPreviewSegments = segments;
   scrollSync?.refreshPreviewMap();
   if (syncSource === "editor" && isEditorAutoSyncSuppressed()) {
     bindDeferredPreviewMeasurements("none");
-    return;
+    return patchMs;
   }
   if (syncSource === "editor") {
     scrollSync?.setActivePane("editor");
@@ -251,20 +391,84 @@ function applyHtmlToPreview({ html, segments }, syncSource = "active") {
     scrollSync?.scheduleFromActivePane();
   }
   bindDeferredPreviewMeasurements(syncSource);
+  return patchMs;
 }
 
-function schedulePreviewUpdate() {
+function cancelScheduledPreviewUpdate() {
+  if (scheduledPreviewTimeout) {
+    clearTimeout(scheduledPreviewTimeout);
+    scheduledPreviewTimeout = 0;
+  }
+  if (scheduledPreviewIdle) {
+    cancelIdleCallbackCompat(scheduledPreviewIdle);
+    scheduledPreviewIdle = 0;
+  }
+  scheduledPreviewState = null;
+}
+
+function performPreviewUpdate(syncSource = "editor", reason = "direct") {
   const markdown = editor.value;
   const currentPath = state.currentPath;
-  applyHtmlToPreview(renderPreviewWithMap(markdown, currentPath), "editor");
-  updateTOC(markdown);
+  const docProfile = getDocumentProfile(markdown);
+  const renderStartedAt = performance.now();
+  const rendered = renderPreviewWithMap(markdown, currentPath);
+  const renderMs = performance.now() - renderStartedAt;
+  updateTOC(markdown, 0);
+  const patchMs = applyHtmlToPreview(rendered, syncSource);
+  previewPerf.record({
+    chars: markdown.length,
+    profile: docProfile,
+    reason,
+    renderMs,
+    patchMs,
+    totalMs: renderMs + patchMs,
+    sampledAt: Date.now(),
+  });
+}
+
+function flushScheduledPreviewUpdate(syncSource = null) {
+  if (!scheduledPreviewState) return;
+  const nextSyncSource = syncSource ?? scheduledPreviewState.syncSource;
+  cancelScheduledPreviewUpdate();
+  performPreviewUpdate(nextSyncSource, "flush");
+}
+
+function schedulePreviewUpdate(reason = "input") {
+  const markdown = editor.value;
+  const docProfile = getDocumentProfile(markdown);
+  const delayMs = getPreviewDelayMs(docProfile);
+  const syncSource = getTypingPreviewSyncSource(docProfile);
+
+  cancelScheduledPreviewUpdate();
+
+  const run = () => {
+    scheduledPreviewTimeout = 0;
+    scheduledPreviewIdle = 0;
+    scheduledPreviewState = null;
+    performPreviewUpdate(syncSource, reason);
+  };
+
+  scheduledPreviewState = { syncSource, reason };
+  if (delayMs <= 0) {
+    run();
+    return;
+  }
+
+  scheduledPreviewTimeout = window.setTimeout(() => {
+    scheduledPreviewTimeout = 0;
+    if (canUseIdleCallback) {
+      scheduledPreviewIdle = window.requestIdleCallback(() => {
+        run();
+      }, { timeout: Math.max(180, delayMs + 120) });
+      return;
+    }
+    run();
+  }, delayMs);
 }
 
 export async function updatePreview(syncSource = "editor") {
-  const markdown = editor.value;
-  const currentPath = state.currentPath;
-  updateTOC(markdown);
-  applyHtmlToPreview(renderPreviewWithMap(markdown, currentPath), syncSource);
+  cancelScheduledPreviewUpdate();
+  performPreviewUpdate(syncSource, "direct");
 }
 
 // --- Status ---
@@ -326,6 +530,37 @@ document.addEventListener("click", (e) => {
   }
   if (!btnExport.contains(e.target) && !exportDropdown.contains(e.target)) {
     exportDropdown.classList.remove("open");
+  }
+});
+
+btnSettings?.addEventListener("click", openSettingsModal);
+settingsClose?.addEventListener("click", closeSettingsModal);
+settingsModal?.addEventListener("click", (e) => {
+  if (e.target === settingsModal) closeSettingsModal();
+});
+
+settingsFontSize?.setAttribute("min", String(FONT_SIZE_RANGE.min));
+settingsFontSize?.setAttribute("max", String(FONT_SIZE_RANGE.max));
+
+settingsFontSize?.addEventListener("input", (e) => {
+  applySettings({ fontSize: Number.parseInt(e.currentTarget.value, 10) });
+});
+
+settingsLanguage?.addEventListener("change", (e) => {
+  applySettings({ uiLanguage: e.currentTarget.value });
+});
+
+settingsLineNumbers?.addEventListener("change", (e) => {
+  applySettings({ showLineNumbers: e.currentTarget.checked });
+});
+
+settingsLineWrapping?.addEventListener("change", (e) => {
+  applySettings({ lineWrapping: e.currentTarget.checked });
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && settingsModal?.classList.contains("open")) {
+    closeSettingsModal();
   }
 });
 
@@ -1207,6 +1442,7 @@ async function handleNew() {
 // --- Print ---
 function handlePrint() {
   exportDropdown.classList.remove("open");
+  flushScheduledPreviewUpdate("editor");
   window.print();
 }
 
@@ -1243,6 +1479,7 @@ async function handleSave() {
     return handleSaveAs();
   }
   try {
+    flushScheduledPreviewUpdate("editor");
     suppressNextChange();
     await actionSave(state.currentPath, editor.value);
     setCleanValue(editor.value);
@@ -1259,6 +1496,7 @@ async function handleSave() {
 async function handleSaveAs() {
   let suppressedSamePathSave = false;
   try {
+    flushScheduledPreviewUpdate("editor");
     const previousPath = state.currentPath;
     const path = await actionPickSaveAsPath(previousPath, editor.value);
     if (!path) return;
@@ -1299,11 +1537,16 @@ btnSearch?.addEventListener("click", () => {
 btnExport.addEventListener("click", (e) => {
   e.stopPropagation();
   exportDropdown.classList.toggle("open");
+  if (exportDropdown.classList.contains("open")) {
+    void loadExportModule();
+    void loadExportModalModule();
+  }
 });
 
 async function handleExportDocx() {
   exportDropdown.classList.remove("open");
   try {
+    const { exportDocx } = await loadExportModule();
     const path = await exportDocx(editor.value, state.currentPath);
     if (path) setStatus(t("status.exported", path.split(/[\\/]/).pop()));
   } catch (err) {
@@ -1315,6 +1558,7 @@ async function handleExportDocx() {
 async function handleExportTxt() {
   exportDropdown.classList.remove("open");
   try {
+    const { exportTxt } = await loadExportModule();
     const path = await exportTxt(editor.value, state.currentPath);
     if (path) setStatus(t("status.exported", path.split(/[\\/]/).pop()));
   } catch (err) {
@@ -1329,6 +1573,8 @@ exportTxtBtn.addEventListener("click", handleExportTxt);
 async function handleExportPdf() {
   exportDropdown.classList.remove("open");
   try {
+    flushScheduledPreviewUpdate("editor");
+    const { openExportModal } = await loadExportModalModule();
     const path = await openExportModal(editor.value, state.currentPath);
     if (path) setStatus(t("status.exported", path.split(/[\\/]/).pop()));
   } catch (err) {
@@ -1340,6 +1586,7 @@ async function handleExportPdf() {
 async function handleExportHtml() {
   exportDropdown.classList.remove("open");
   try {
+    const { exportHtml } = await loadExportModule();
     const path = await exportHtml(editor.value, state.currentPath);
     if (path) setStatus(t("status.exported", path.split(/[\\/]/).pop()));
   } catch (err) {
@@ -1505,6 +1752,9 @@ editor.addEventListener("wheel", () => {
 editor.addEventListener("focus", () => {
   scrollSync.setActivePane("editor");
 });
+editor.addEventListener("blur", () => {
+  flushScheduledPreviewUpdate("editor");
+});
 preview.addEventListener("pointerdown", () => {
   scrollSync.setActivePane("preview");
 });
@@ -1593,6 +1843,7 @@ listen("file-open", (event) => {
 
 // --- Startup: restore snapshot if available ---
 async function init() {
+  applySettings(appSettings, { persist: false });
   applyTranslations();
   updateEditorFooter();
   renderHelp();

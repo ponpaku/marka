@@ -1,5 +1,7 @@
 /* --- Theme Definitions --- */
 [data-theme="light"], :root {
+    --editor-font-size: 16px;
+    --app-footer-height: 34px;
     --bg-header: #333;
     --fg-header: #fff;
     --bg-editor: #f9f9f9;
@@ -157,6 +159,7 @@ header {
 .btn { padding: 4px 8px; cursor: pointer; font-size: 0.8rem; background: var(--bg-btn); color: var(--fg-header); border: 1px solid var(--border-btn); border-radius: 3px; }
 .btn:hover { background: var(--bg-btn-hover); }
 
+.toolbar-icon-btn,
 #theme-toggle {
     padding: 4px 8px;
     cursor: pointer;
@@ -168,14 +171,28 @@ header {
     line-height: 1;
 }
 
+.toolbar-icon-btn:hover,
+#theme-toggle:hover {
+    background: color-mix(in srgb, var(--bg-btn-hover) 60%, transparent);
+}
+
 #status { font-size: 0.8rem; color: var(--fg-status); margin-right: 10px; white-space: nowrap; }
 
 .container {
     display: flex;
+    flex-direction: column;
     flex: 1;
     min-width: 0;
+    min-height: 0;
     height: 100%;
     width: 100%;
+}
+
+.workspace-split {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
 }
 
 /* Editor Styles */
@@ -225,7 +242,7 @@ header {
 #editor .cm-scroller {
     overflow: auto;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-    font-size: 16px;
+    font-size: var(--editor-font-size);
     line-height: 1.6;
 }
 
@@ -239,6 +256,7 @@ header {
     background: color-mix(in srgb, var(--bg-editor) 92%, var(--border-pane));
     border-right: 1px solid var(--border-pane);
     color: var(--fg-status);
+    font-size: 0.85rem;
 }
 
 #editor .cm-lineNumbers .cm-gutterElement {
@@ -285,7 +303,7 @@ header {
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    min-height: 34px;
+    min-height: var(--app-footer-height);
     padding: 0 12px;
     border-top: 1px solid var(--border-pane);
     background: color-mix(in srgb, var(--bg-editor) 86%, var(--border-pane));
@@ -1396,6 +1414,7 @@ body.dragging-file, body.dragging-file * { cursor: grabbing !important; }
     header,
     #sidebar,
     #editor-pane,
+    #editor-footer,
     #divider,
     #help-toggle,
     #help-panel,
@@ -1460,7 +1479,7 @@ body.dragging-file, body.dragging-file * { cursor: grabbing !important; }
     display: flex;
     align-items: center;
     padding: 0 6px;
-    height: 28px;
+    min-height: var(--app-footer-height);
 }
 #btn-about {
     background: none;
@@ -1602,4 +1621,136 @@ body.dragging-file, body.dragging-file * { cursor: grabbing !important; }
     background: var(--bg-ctx-menu-hover);
     color: var(--fg-ctx-menu-hover);
     border-color: var(--bg-ctx-menu-hover);
+}
+
+/* ===== Settings Modal ===== */
+.settings-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9200;
+    background: var(--bg-about-overlay);
+    align-items: center;
+    justify-content: center;
+}
+
+.settings-overlay.open {
+    display: flex;
+}
+
+.settings-dialog {
+    width: 440px;
+    max-width: calc(100vw - 32px);
+    background: var(--bg-about-dialog);
+    color: var(--fg-about-dialog);
+    border: 1px solid var(--border-about-dialog);
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    overflow: hidden;
+}
+
+.settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-about-dialog);
+}
+
+.settings-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.settings-close-btn {
+    background: none;
+    border: none;
+    color: var(--fg-about-dialog);
+    font-size: 1.2rem;
+    cursor: pointer;
+    line-height: 1;
+    padding: 2px 5px;
+    border-radius: 4px;
+    opacity: 0.7;
+}
+
+.settings-close-btn:hover {
+    opacity: 1;
+}
+
+.settings-body {
+    display: grid;
+    gap: 18px;
+    padding: 18px 16px 20px;
+}
+
+.settings-section {
+    display: grid;
+    gap: 12px;
+}
+
+.settings-section-label {
+    font-size: 0.76rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    opacity: 0.7;
+}
+
+.settings-field {
+    display: grid;
+    gap: 6px;
+    font-size: 0.86rem;
+}
+
+.settings-font-size-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+}
+
+.settings-font-size-row input[type="range"] {
+    width: 100%;
+    cursor: pointer;
+}
+
+.settings-font-size-row output {
+    min-width: 48px;
+    text-align: right;
+    font-size: 0.82rem;
+    color: var(--fg-status);
+}
+
+.settings-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.86rem;
+    cursor: pointer;
+}
+
+.settings-checkbox input {
+    cursor: pointer;
+}
+
+.settings-select {
+    width: 100%;
+    padding: 7px 8px;
+    font-size: 0.84rem;
+    border: 1px solid var(--border-dropdown);
+    border-radius: 4px;
+    background: var(--bg-editor);
+    color: var(--fg-editor);
+}
+
+@media (max-width: 640px) {
+    .settings-dialog {
+        width: min(440px, calc(100vw - 20px));
+    }
+
+    .settings-body {
+        gap: 16px;
+        padding: 16px 14px 18px;
+    }
 }
