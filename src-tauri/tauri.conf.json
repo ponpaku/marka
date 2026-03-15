@@ -11,12 +11,13 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "msi"],
+    "targets": ["nsis", "msi", "app"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.ico",
+      "icons/icon.icns",
       "icons/icon.png"
     ],
     "windows": {
@@ -25,6 +26,9 @@
         "displayLanguageSelector": false,
         "installerHooks": "./windows/hooks.nsh"
       }
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.13"
     },
     "fileAssociations": [
       {

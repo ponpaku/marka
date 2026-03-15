@@ -2002,12 +2002,18 @@ async function init() {
   try {
     const initialFile = await invoke("get_initial_file");
     if (initialFile) {
+      // Signal backend that frontend is ready before opening the file,
+      // so subsequent file-open events (e.g. macOS Opened) are emitted.
+      invoke("mark_ready").catch(() => {});
       await openFileFromPath(initialFile);
       return;
     }
   } catch (err) {
     console.error("get_initial_file failed:", err);
   }
+
+  // No initial file — mark ready so macOS file-open events are forwarded
+  invoke("mark_ready").catch(() => {});
 
   try {
     const restored = await checkRestore();

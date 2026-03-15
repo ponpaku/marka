@@ -3,6 +3,7 @@ use tauri::{Emitter, Manager};
 use pulldown_cmark::{html, Options, Parser};
 
 struct InitialFile(Mutex<Option<String>>);
+struct AppReady(std::sync::atomic::AtomicBool);
 
 fn is_markdown_file(path: &str) -> bool {
     let lower = path.to_lowercase();
@@ -19,6 +20,11 @@ fn find_md_arg(args: &[String]) -> Option<String> {
 #[tauri::command]
 fn get_initial_file(state: tauri::State<'_, InitialFile>) -> Option<String> {
     state.0.lock().unwrap().take()
+}
+
+#[tauri::command]
+fn mark_ready(state: tauri::State<'_, AppReady>) {
+    state.0.store(true, std::sync::atomic::Ordering::Release);
 }
 
 #[tauri::command]
@@ -65,7 +71,27 @@ fn get_installed_fonts() -> Result<Vec<String>, String> {
         return Ok(fonts);
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
+    {
+        use core_text::font_collection;
+
+        let collection = font_collection::create_for_all_families();
+        if let Some(descriptors) = collection.get_descriptors() {
+            let mut seen = std::collections::HashSet::new();
+            for descriptor in descriptors.iter() {
+                let family = descriptor.family_name();
+                if !family.is_empty() {
+                    seen.insert(family);
+                }
+            }
+            let mut fonts: Vec<String> = seen.into_iter().collect();
+            fonts.sort_unstable();
+            return Ok(fonts);
+        }
+        return Ok(Vec::new());
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         Ok(Vec::new())
     }
@@ -89,8 +115,10 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_opener::init())
         .manage(InitialFile(Mutex::new(None)))
+        .manage(AppReady(std::sync::atomic::AtomicBool::new(false)))
         .invoke_handler(tauri::generate_handler![
             get_initial_file,
+            mark_ready,
             render_markdown,
             get_installed_fonts
         ])
@@ -103,6 +131,34 @@ pub fn run() {
             }
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app, event| {
+            // macOS: handle file-open via Finder / "Open With" after app is ready
+            if let tauri::RunEvent::Opened { urls } = event {
+                for url in urls {
+                    if let Ok(path) = url.to_file_path() {
+                        let path_str = path.to_string_lossy().to_string();
+                        if is_markdown_file(&path_str) {
+                            let ready = app
+                                .state::<AppReady>()
+                                .0
+                                .load(std::sync::atomic::Ordering::Acquire);
+                            if ready {
+                                let _ = app.emit("file-open", &path_str);
+                                // Focus window
+                                if let Some(w) = app.get_webview_window("main") {
+                                    let _ = w.unminimize();
+                                    let _ = w.set_focus();
+                                }
+                            } else {
+                                // App not ready yet — store for get_initial_file()
+                                let state = app.state::<InitialFile>();
+                                *state.0.lock().unwrap() = Some(path_str);
+                            }
+                        }
+                    }
+                }
+            }
+        });
 }
