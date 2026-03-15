@@ -1,19 +1,27 @@
-import { marked } from "marked";
+import morphdom from "morphdom";
 import "./style.css";
 import { actionOpen, actionSave, actionPickSaveAsPath } from "./file-ops.js";
 import { scheduleSave, cancelScheduledSave, clearSnapshot, checkRestore } from "./autosave.js";
-import { t, applyTranslations, renderHelp } from "./i18n.js";
-import { exportDocx, exportTxt, exportHtml } from "./export.js";
-import { openExportModal } from "./export-modal.js";
-import { loadSavedStyle, initPreviewStylePanel } from "./preview-style.js";
+import { t, applyTranslations, renderHelp, getLang, getCodeMirrorPhrases, setLang } from "./i18n.js";
+import { loadSavedStyle, initPreviewStylePanel, refreshPreviewStylePanel } from "./preview-style.js";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { readTextFile } from "@tauri-apps/plugin-fs";
-import { resolvePreviewImages } from "./image-resolver.js";
 import { startWatching, stopWatching, suppressNextChange, clearSuppression, setExternalChangeHandler } from "./file-watcher.js";
-import { initSidebar, updateTOC, addToRecentFiles } from "./sidebar.js";
+import { initSidebar, updateTOC, addToRecentFiles, refreshSidebarTranslations } from "./sidebar.js";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { createEditorAdapter } from "./editor-adapter.js";
+import { renderPreviewWithMap } from "./preview-renderer.js";
+import { createScrollSync } from "./scroll-sync.js";
+import { FONT_SIZE_RANGE, loadSettings, normalizeSettings, saveSettings } from "./settings.js";
+import {
+  classifyDocumentSize,
+  getNativeEditCoalesceWindowMs,
+  getPreviewDelayMs,
+  getTypingPreviewSyncSource,
+  trimHistoryStack,
+} from "./perf-policy.js";
 import {
   findListContext,
   findParentListItem,
@@ -28,7 +36,7 @@ import {
 } from "./editor-logic.js";
 
 // --- DOM Elements ---
-const editor = document.getElementById("editor");
+const editorHost = document.getElementById("editor");
 const preview = document.getElementById("preview-pane");
 const status = document.getElementById("status");
 const helpToggle = document.getElementById("help-toggle");
@@ -38,6 +46,7 @@ const btnOpen = document.getElementById("btn-open");
 const btnSave = document.getElementById("btn-save");
 const btnSaveAs = document.getElementById("btn-save-as");
 const themeToggle = document.getElementById("theme-toggle");
+const btnSettings = document.getElementById("btn-settings");
 const btnExport = document.getElementById("btn-export");
 const exportDropdown = document.getElementById("export-dropdown");
 const exportDocxBtn = document.getElementById("export-docx");
@@ -45,6 +54,205 @@ const exportTxtBtn = document.getElementById("export-txt");
 const exportPdfBtn = document.getElementById("export-pdf");
 const exportHtmlBtn = document.getElementById("export-html");
 const exportPrintBtn = document.getElementById("export-print");
+const editorPane = document.getElementById("editor-pane");
+const btnSearch = document.getElementById("btn-search");
+const editorCharCount = document.getElementById("editor-char-count");
+const settingsModal = document.getElementById("settings-modal");
+const settingsClose = document.getElementById("settings-close");
+const settingsDisplayFont = document.getElementById("settings-display-font");
+const settingsFontSize = document.getElementById("settings-font-size");
+const settingsFontSizeValue = document.getElementById("settings-font-size-value");
+const settingsLanguage = document.getElementById("settings-language");
+const settingsLineNumbers = document.getElementById("settings-line-numbers");
+const settingsLineWrapping = document.getElementById("settings-line-wrapping");
+
+let scrollSync = null;
+let currentPreviewSegments = [];
+let suppressEditorSyncUntil = 0;
+let lastPreviewHtml = "";
+let appSettings = loadSettings();
+let availableDisplayFonts = [];
+let exportModulePromise = null;
+let exportModalPromise = null;
+let scheduledPreviewTimeout = 0;
+let scheduledPreviewIdle = 0;
+let scheduledPreviewState = null;
+
+const canUseIdleCallback = typeof window.requestIdleCallback === "function";
+const cancelIdleCallbackCompat = (id) => {
+  if (!id || typeof window.cancelIdleCallback !== "function") return;
+  window.cancelIdleCallback(id);
+};
+
+const previewPerf = {
+  samples: [],
+  record(sample) {
+    this.samples.push(sample);
+    if (this.samples.length > 40) this.samples.shift();
+  },
+  snapshot() {
+    if (this.samples.length === 0) {
+      return {
+        sampleCount: 0,
+        averageRenderMs: 0,
+        averagePatchMs: 0,
+        averageTotalMs: 0,
+        maxTotalMs: 0,
+      };
+    }
+    const totals = this.samples.reduce((acc, sample) => {
+      acc.render += sample.renderMs;
+      acc.patch += sample.patchMs;
+      acc.total += sample.totalMs;
+      acc.maxTotal = Math.max(acc.maxTotal, sample.totalMs);
+      return acc;
+    }, { render: 0, patch: 0, total: 0, maxTotal: 0 });
+    return {
+      sampleCount: this.samples.length,
+      averageRenderMs: totals.render / this.samples.length,
+      averagePatchMs: totals.patch / this.samples.length,
+      averageTotalMs: totals.total / this.samples.length,
+      maxTotalMs: totals.maxTotal,
+      last: this.samples[this.samples.length - 1],
+    };
+  },
+  clear() {
+    this.samples.length = 0;
+  },
+};
+
+window.__MARKA_PERF__ = previewPerf;
+
+function suppressEditorAutoSync(durationMs = 180) {
+  suppressEditorSyncUntil = performance.now() + durationMs;
+}
+
+function isEditorAutoSyncSuppressed() {
+  return performance.now() < suppressEditorSyncUntil;
+}
+
+function updateEditorPlaceholderState() {
+  if (!editorPane) return;
+  editorPane.dataset.placeholder = t("editor.placeholder");
+  editorPane.dataset.hasContent = editor.value.length > 0 ? "true" : "false";
+}
+
+function updateEditorFooter() {
+  if (!editorCharCount) return;
+  editorCharCount.textContent = t("footer.charCount", editor.value.length.toLocaleString());
+}
+
+function toCssFontStack(fontName, fallback = "sans-serif") {
+  if (typeof fontName !== "string" || fontName.trim().length === 0) {
+    return fallback;
+  }
+  const escaped = fontName.trim().replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  return `"${escaped}", ${fallback}`;
+}
+
+function renderDisplayFontOptions() {
+  if (!settingsDisplayFont) return;
+
+  const fonts = Array.from(new Set([appSettings.displayFont, ...availableDisplayFonts]))
+    .filter((font) => typeof font === "string" && font.trim().length > 0)
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+
+  settingsDisplayFont.replaceChildren();
+  for (const font of fonts) {
+    const option = document.createElement("option");
+    option.value = font;
+    option.textContent = font;
+    settingsDisplayFont.append(option);
+  }
+
+  settingsDisplayFont.value = appSettings.displayFont;
+}
+
+async function loadInstalledFonts() {
+  try {
+    const fonts = await invoke("get_installed_fonts");
+    availableDisplayFonts = Array.isArray(fonts)
+      ? fonts.filter((font) => typeof font === "string" && font.trim().length > 0)
+      : [];
+  } catch (err) {
+    console.error("Failed to load installed fonts:", err);
+    availableDisplayFonts = [];
+  }
+  renderDisplayFontOptions();
+}
+
+function syncSettingsControls() {
+  renderDisplayFontOptions();
+  if (settingsFontSize) settingsFontSize.value = String(appSettings.fontSize);
+  if (settingsFontSizeValue) settingsFontSizeValue.textContent = `${appSettings.fontSize}px`;
+  if (settingsLanguage) settingsLanguage.value = appSettings.uiLanguage;
+  if (settingsLineNumbers) settingsLineNumbers.checked = appSettings.showLineNumbers;
+  if (settingsLineWrapping) settingsLineWrapping.checked = appSettings.lineWrapping;
+}
+
+function refreshLanguageDependentUi() {
+  applyTranslations();
+  renderHelp();
+  refreshSidebarTranslations(editor.value);
+  refreshPreviewStylePanel();
+  updateEditorPlaceholderState();
+  updateEditorFooter();
+  updateTitle();
+}
+
+function applySettings(nextSettings, { persist = true } = {}) {
+  appSettings = persist
+    ? saveSettings(nextSettings)
+    : normalizeSettings({ ...appSettings, ...nextSettings });
+
+  const previousLang = getLang();
+  setLang(appSettings.uiLanguage, { persist: false });
+  editor.setPhrases(getCodeMirrorPhrases());
+  editor.setLineNumbersVisible(appSettings.showLineNumbers);
+  editor.setLineWrappingEnabled(appSettings.lineWrapping);
+  document.documentElement.style.setProperty("--editor-font-family", toCssFontStack(appSettings.displayFont, "monospace"));
+  document.documentElement.style.setProperty("--preview-font-family", toCssFontStack(appSettings.displayFont, "sans-serif"));
+  document.documentElement.style.setProperty("--editor-font-size", `${appSettings.fontSize}px`);
+  syncSettingsControls();
+
+  if (previousLang !== appSettings.uiLanguage) {
+    refreshLanguageDependentUi();
+  }
+
+  requestAnimationFrame(() => {
+    scrollSync?.scheduleFromActivePane();
+  });
+}
+
+function openSettingsModal() {
+  settingsModal?.classList.add("open");
+}
+
+function closeSettingsModal() {
+  settingsModal?.classList.remove("open");
+}
+
+function loadExportModule() {
+  exportModulePromise ??= import("./export.js");
+  return exportModulePromise;
+}
+
+function loadExportModalModule() {
+  exportModalPromise ??= import("./export-modal.js");
+  return exportModalPromise;
+}
+
+const editor = createEditorAdapter(editorHost, {
+  onUpdate(update) {
+    updateEditorPlaceholderState();
+    updateEditorFooter();
+    if (!scrollSync) return;
+    if (update.selectionSet && !update.docChanged) {
+      scrollSync.setActivePane("editor");
+      scrollSync.scheduleFromEditor("selection");
+    }
+  },
+});
 
 // --- App State ---
 export const state = {
@@ -53,13 +261,16 @@ export const state = {
   lastSavedAt: null,
 };
 
-const HISTORY_LIMIT = 200;
 const undoStack = [];
 const redoStack = [];
 let lastKnownSnapshot = null;
 let cleanValue = "";
 let nativeEditGroup = null;
 let pendingInputType = "unknown";
+
+function getDocumentProfile(text = editor.value) {
+  return classifyDocumentSize(text, editor.getLineCount());
+}
 
 function captureEditorSnapshot() {
   return {
@@ -84,13 +295,13 @@ function applyEditorSnapshot(snapshot) {
   editor.selectionEnd = Math.min(snapshot.end, maxPos);
 }
 
-function pushHistory(stack, snapshot) {
+function pushHistory(stack, snapshot, referenceText = snapshot?.value ?? editor.value) {
   if (stack.length > 0 && stack[stack.length - 1].value === snapshot.value) {
     stack[stack.length - 1] = cloneSnapshot(snapshot);
     return;
   }
   stack.push(cloneSnapshot(snapshot));
-  if (stack.length > HISTORY_LIMIT) stack.shift();
+  trimHistoryStack(stack, referenceText);
 }
 
 function resetEditorHistory() {
@@ -107,7 +318,7 @@ function commitProgrammaticEdit(beforeSnapshot) {
     lastKnownSnapshot = currentSnapshot;
     return false;
   }
-  pushHistory(undoStack, beforeSnapshot);
+  pushHistory(undoStack, beforeSnapshot, currentSnapshot.value);
   redoStack.length = 0;
   lastKnownSnapshot = currentSnapshot;
   nativeEditGroup = null;
@@ -118,6 +329,7 @@ function commitProgrammaticEdit(beforeSnapshot) {
 
 function handleNativeInputChange(e) {
   const currentSnapshot = captureEditorSnapshot();
+  const documentProfile = getDocumentProfile(currentSnapshot.value);
   if (lastKnownSnapshot && currentSnapshot.value !== lastKnownSnapshot.value) {
     const now = Date.now();
     const inputType =
@@ -134,9 +346,15 @@ function handleNativeInputChange(e) {
       markDirty();
       return;
     }
-    const canCoalesce = shouldCoalesceNativeEdit(nativeEditGroup, inputType, now - (nativeEditGroup?.lastAt || 0));
+    const coalesceWindowMs = getNativeEditCoalesceWindowMs(documentProfile);
+    const canCoalesce = shouldCoalesceNativeEdit(
+      nativeEditGroup,
+      inputType,
+      now - (nativeEditGroup?.lastAt || 0),
+      coalesceWindowMs,
+    );
     if (!canCoalesce) {
-      pushHistory(undoStack, lastKnownSnapshot);
+      pushHistory(undoStack, lastKnownSnapshot, currentSnapshot.value);
       redoStack.length = 0;
       nativeEditGroup = {
         inputType,
@@ -148,7 +366,7 @@ function handleNativeInputChange(e) {
   }
   pendingInputType = "unknown";
   lastKnownSnapshot = currentSnapshot;
-  updatePreview();
+  schedulePreviewUpdate("input");
   markDirty();
 }
 
@@ -156,7 +374,7 @@ function handleUndo() {
   if (undoStack.length === 0) return false;
   const currentSnapshot = captureEditorSnapshot();
   const previousSnapshot = undoStack.pop();
-  pushHistory(redoStack, currentSnapshot);
+  pushHistory(redoStack, currentSnapshot, previousSnapshot.value);
   applyEditorSnapshot(previousSnapshot);
   lastKnownSnapshot = captureEditorSnapshot();
   nativeEditGroup = null;
@@ -169,7 +387,7 @@ function handleRedo() {
   if (redoStack.length === 0) return false;
   const currentSnapshot = captureEditorSnapshot();
   const nextSnapshot = redoStack.pop();
-  pushHistory(undoStack, currentSnapshot);
+  pushHistory(undoStack, currentSnapshot, nextSnapshot.value);
   applyEditorSnapshot(nextSnapshot);
   lastKnownSnapshot = captureEditorSnapshot();
   nativeEditGroup = null;
@@ -191,17 +409,110 @@ function setUnknownDirtyValue() {
 }
 
 // --- Markdown Rendering ---
-export function updatePreview() {
-  let html = marked.parse(editor.value);
-  html = resolvePreviewImages(html, state.currentPath);
-  // チェックボックスに data-index を付与し disabled を除去
-  let cbIndex = 0;
-  html = html.replace(/<input [^>]*type="checkbox"[^>]*>/g, (match) => {
-    const checked = match.includes("checked");
-    return `<input type="checkbox" data-index="${cbIndex++}"${checked ? " checked" : ""}>`;
+function applyHtmlToPreview({ html, segments }, syncSource = "active") {
+  let patchMs = 0;
+  if (html !== lastPreviewHtml) {
+    const tmp = document.createElement("div");
+    tmp.innerHTML = html;
+    const patchStartedAt = performance.now();
+    morphdom(preview, tmp, { childrenOnly: true });
+    patchMs = performance.now() - patchStartedAt;
+    lastPreviewHtml = html;
+  }
+  currentPreviewSegments = segments;
+  scrollSync?.refreshPreviewMap();
+  if (syncSource === "editor" && isEditorAutoSyncSuppressed()) {
+    bindDeferredPreviewMeasurements("none");
+    return patchMs;
+  }
+  if (syncSource === "editor") {
+    scrollSync?.setActivePane("editor");
+    scrollSync?.scheduleFromEditor("selection");
+  } else if (syncSource === "preview") {
+    scrollSync?.setActivePane("preview");
+    scrollSync?.scheduleFromPreview();
+  } else {
+    scrollSync?.scheduleFromActivePane();
+  }
+  bindDeferredPreviewMeasurements(syncSource);
+  return patchMs;
+}
+
+function cancelScheduledPreviewUpdate() {
+  if (scheduledPreviewTimeout) {
+    clearTimeout(scheduledPreviewTimeout);
+    scheduledPreviewTimeout = 0;
+  }
+  if (scheduledPreviewIdle) {
+    cancelIdleCallbackCompat(scheduledPreviewIdle);
+    scheduledPreviewIdle = 0;
+  }
+  scheduledPreviewState = null;
+}
+
+function performPreviewUpdate(syncSource = "editor", reason = "direct") {
+  const markdown = editor.value;
+  const currentPath = state.currentPath;
+  const docProfile = getDocumentProfile(markdown);
+  const renderStartedAt = performance.now();
+  const rendered = renderPreviewWithMap(markdown, currentPath);
+  const renderMs = performance.now() - renderStartedAt;
+  updateTOC(markdown, 0);
+  const patchMs = applyHtmlToPreview(rendered, syncSource);
+  previewPerf.record({
+    chars: markdown.length,
+    profile: docProfile,
+    reason,
+    renderMs,
+    patchMs,
+    totalMs: renderMs + patchMs,
+    sampledAt: Date.now(),
   });
-  preview.innerHTML = html;
-  updateTOC(editor.value);
+}
+
+function flushScheduledPreviewUpdate(syncSource = null) {
+  if (!scheduledPreviewState) return;
+  const nextSyncSource = syncSource ?? scheduledPreviewState.syncSource;
+  cancelScheduledPreviewUpdate();
+  performPreviewUpdate(nextSyncSource, "flush");
+}
+
+function schedulePreviewUpdate(reason = "input") {
+  const markdown = editor.value;
+  const docProfile = getDocumentProfile(markdown);
+  const delayMs = getPreviewDelayMs(docProfile);
+  const syncSource = getTypingPreviewSyncSource(docProfile);
+
+  cancelScheduledPreviewUpdate();
+
+  const run = () => {
+    scheduledPreviewTimeout = 0;
+    scheduledPreviewIdle = 0;
+    scheduledPreviewState = null;
+    performPreviewUpdate(syncSource, reason);
+  };
+
+  scheduledPreviewState = { syncSource, reason };
+  if (delayMs <= 0) {
+    run();
+    return;
+  }
+
+  scheduledPreviewTimeout = window.setTimeout(() => {
+    scheduledPreviewTimeout = 0;
+    if (canUseIdleCallback) {
+      scheduledPreviewIdle = window.requestIdleCallback(() => {
+        run();
+      }, { timeout: Math.max(180, delayMs + 120) });
+      return;
+    }
+    run();
+  }, delayMs);
+}
+
+export async function updatePreview(syncSource = "editor") {
+  cancelScheduledPreviewUpdate();
+  performPreviewUpdate(syncSource, "direct");
 }
 
 // --- Status ---
@@ -266,11 +577,49 @@ document.addEventListener("click", (e) => {
   }
 });
 
+btnSettings?.addEventListener("click", openSettingsModal);
+settingsClose?.addEventListener("click", closeSettingsModal);
+settingsModal?.addEventListener("click", (e) => {
+  if (e.target === settingsModal) closeSettingsModal();
+});
+
+settingsFontSize?.setAttribute("min", String(FONT_SIZE_RANGE.min));
+settingsFontSize?.setAttribute("max", String(FONT_SIZE_RANGE.max));
+
+settingsFontSize?.addEventListener("input", (e) => {
+  applySettings({ fontSize: Number.parseInt(e.currentTarget.value, 10) });
+});
+
+settingsDisplayFont?.addEventListener("change", (e) => {
+  applySettings({ displayFont: e.currentTarget.value });
+});
+
+settingsLanguage?.addEventListener("change", (e) => {
+  applySettings({ uiLanguage: e.currentTarget.value });
+});
+
+settingsLineNumbers?.addEventListener("change", (e) => {
+  applySettings({ showLineNumbers: e.currentTarget.checked });
+});
+
+settingsLineWrapping?.addEventListener("change", (e) => {
+  applySettings({ lineWrapping: e.currentTarget.checked });
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && settingsModal?.classList.contains("open")) {
+    closeSettingsModal();
+  }
+});
+
 // --- Theme Switching ---
 function applyTheme(theme) {
   document.body.dataset.theme = theme;
   themeToggle.textContent = theme === "dark" ? "\u2600" : "\u263D";
   localStorage.setItem("marka-theme", theme);
+  requestAnimationFrame(() => {
+    scrollSync?.scheduleFromActivePane();
+  });
 }
 
 themeToggle.addEventListener("click", () => {
@@ -1115,19 +1464,19 @@ function handleEnterKey(e) {
 
 // --- Shared: confirm before discarding unsaved changes ---
 // Returns true if safe to proceed (no unsaved changes, or user confirmed discard).
-async function confirmDiscard() {
+async function confirmDiscard(action = "new") {
   if (!state.dirty) return true;
-  return await ask(t("new.confirmMessage"), {
+  return await ask(t(`${action}.confirmMessage`), {
     title: t("new.confirmTitle"),
     kind: "warning",
-    okLabel: t("new.ok"),
+    okLabel: t(`${action}.ok`),
     cancelLabel: t("new.cancel"),
   });
 }
 
 // --- New File ---
 async function handleNew() {
-  if (!await confirmDiscard()) return;
+  if (!await confirmDiscard("new")) return;
   await stopWatching();
   editor.value = "";
   state.currentPath = null;
@@ -1141,6 +1490,7 @@ async function handleNew() {
 // --- Print ---
 function handlePrint() {
   exportDropdown.classList.remove("open");
+  flushScheduledPreviewUpdate("editor");
   window.print();
 }
 
@@ -1157,6 +1507,7 @@ async function handleOpen() {
   try {
     const result = await actionOpen();
     if (!result) return;
+    if (!await confirmDiscard("open")) return;
     state.currentPath = result.path;
     state.lastSavedAt = Date.now();
     editor.value = result.text;
@@ -1177,6 +1528,7 @@ async function handleSave() {
     return handleSaveAs();
   }
   try {
+    flushScheduledPreviewUpdate("editor");
     suppressNextChange();
     await actionSave(state.currentPath, editor.value);
     setCleanValue(editor.value);
@@ -1193,6 +1545,7 @@ async function handleSave() {
 async function handleSaveAs() {
   let suppressedSamePathSave = false;
   try {
+    flushScheduledPreviewUpdate("editor");
     const previousPath = state.currentPath;
     const path = await actionPickSaveAsPath(previousPath, editor.value);
     if (!path) return;
@@ -1224,16 +1577,25 @@ btnNew.addEventListener("click", handleNew);
 btnOpen.addEventListener("click", handleOpen);
 btnSave.addEventListener("click", handleSave);
 btnSaveAs.addEventListener("click", handleSaveAs);
+btnSearch?.addEventListener("click", () => {
+  editor.openSearch();
+  editor.focus();
+});
 
 // --- Export Dropdown ---
 btnExport.addEventListener("click", (e) => {
   e.stopPropagation();
   exportDropdown.classList.toggle("open");
+  if (exportDropdown.classList.contains("open")) {
+    void loadExportModule();
+    void loadExportModalModule();
+  }
 });
 
 async function handleExportDocx() {
   exportDropdown.classList.remove("open");
   try {
+    const { exportDocx } = await loadExportModule();
     const path = await exportDocx(editor.value, state.currentPath);
     if (path) setStatus(t("status.exported", path.split(/[\\/]/).pop()));
   } catch (err) {
@@ -1245,6 +1607,7 @@ async function handleExportDocx() {
 async function handleExportTxt() {
   exportDropdown.classList.remove("open");
   try {
+    const { exportTxt } = await loadExportModule();
     const path = await exportTxt(editor.value, state.currentPath);
     if (path) setStatus(t("status.exported", path.split(/[\\/]/).pop()));
   } catch (err) {
@@ -1259,6 +1622,8 @@ exportTxtBtn.addEventListener("click", handleExportTxt);
 async function handleExportPdf() {
   exportDropdown.classList.remove("open");
   try {
+    flushScheduledPreviewUpdate("editor");
+    const { openExportModal } = await loadExportModalModule();
     const path = await openExportModal(editor.value, state.currentPath);
     if (path) setStatus(t("status.exported", path.split(/[\\/]/).pop()));
   } catch (err) {
@@ -1270,6 +1635,7 @@ async function handleExportPdf() {
 async function handleExportHtml() {
   exportDropdown.classList.remove("open");
   try {
+    const { exportHtml } = await loadExportModule();
     const path = await exportHtml(editor.value, state.currentPath);
     if (path) setStatus(t("status.exported", path.split(/[\\/]/).pop()));
   } catch (err) {
@@ -1284,6 +1650,7 @@ exportPrintBtn.addEventListener("click", handlePrint);
 
 // --- Keyboard Event Handler ---
 editor.addEventListener("keydown", (e) => {
+  scrollSync?.setActivePane("editor");
   if (e.ctrlKey || e.metaKey) {
     const key = e.key.toLowerCase();
     if (key === "enter") {
@@ -1350,6 +1717,7 @@ editor.addEventListener("keydown", (e) => {
   }
 
   if (e.key === "Enter") {
+    suppressEditorAutoSync();
     if (e.shiftKey) {
       e.preventDefault();
       const continuationIndent = getShiftEnterContinuationIndent(editor.value, editor.selectionStart);
@@ -1362,6 +1730,7 @@ editor.addEventListener("keydown", (e) => {
 
 // --- User Input ---
 editor.addEventListener("beforeinput", (e) => {
+  scrollSync?.setActivePane("editor");
   const inputType = typeof e?.inputType === "string" ? e.inputType : "unknown";
   pendingInputType = inputType;
   if (inputType !== "historyUndo" && inputType !== "historyRedo") return;
@@ -1376,64 +1745,142 @@ editor.addEventListener("beforeinput", (e) => {
 });
 
 editor.addEventListener("input", (e) => {
+  scrollSync?.setActivePane("editor");
   handleNativeInputChange(e);
 });
 
 // --- Scroll Sync ---
-let activePane = null;
+const divider = document.getElementById("divider");
+const previewWrapper = document.getElementById("preview-wrapper");
+const container = document.querySelector(".container");
+const workspaceSplit = document.querySelector(".workspace-split");
+const SPLIT_RATIO_KEY = "marka-split-ratio";
 
-editor.addEventListener("mouseover", () => {
-  activePane = editor;
+function clampSplitRatio(value) {
+  return Math.max(0.1, Math.min(0.9, value));
+}
+
+function loadSplitRatio() {
+  const stored = Number.parseFloat(localStorage.getItem(SPLIT_RATIO_KEY) ?? "");
+  if (!Number.isFinite(stored)) return 0.5;
+  return clampSplitRatio(stored);
+}
+
+let splitRatio = loadSplitRatio();
+
+function applySplitRatio(nextRatio = splitRatio) {
+  if (!workspaceSplit) return;
+
+  splitRatio = clampSplitRatio(nextRatio);
+  const totalWidth = workspaceSplit.clientWidth - divider.offsetWidth;
+  if (totalWidth <= 0) return;
+
+  editorPane.style.flex = "none";
+  previewWrapper.style.flex = "none";
+  editorPane.style.width = `${splitRatio * totalWidth}px`;
+  previewWrapper.style.width = `${(1 - splitRatio) * totalWidth}px`;
+}
+
+scrollSync = createScrollSync({
+  editor,
+  preview,
+  getSegments: () => currentPreviewSegments,
 });
-preview.addEventListener("mouseover", () => {
-  activePane = preview;
+
+let deferredMeasureFrame = 0;
+function scheduleDeferredSync(syncSource = "active") {
+  if (!scrollSync) return;
+  if (syncSource === "none") return;
+  if (syncSource === "editor" && isEditorAutoSyncSuppressed()) return;
+  if (syncSource === "editor") {
+    scrollSync.setActivePane("editor");
+    scrollSync.scheduleFromEditor("scroll");
+    return;
+  }
+  if (syncSource === "preview") {
+    scrollSync.setActivePane("preview");
+    scrollSync.scheduleFromPreview();
+    return;
+  }
+  scrollSync.scheduleFromActivePane();
+}
+
+function bindDeferredPreviewMeasurements(syncSource = "active") {
+  preview.querySelectorAll("img").forEach((img) => {
+    if (!img.complete) {
+      img.addEventListener("load", () => scheduleDeferredSync(syncSource), { once: true });
+      img.addEventListener("error", () => scheduleDeferredSync(syncSource), { once: true });
+    }
+  });
+  if (deferredMeasureFrame) cancelAnimationFrame(deferredMeasureFrame);
+  deferredMeasureFrame = requestAnimationFrame(() => {
+    deferredMeasureFrame = 0;
+    scheduleDeferredSync(syncSource);
+  });
+}
+
+editor.addEventListener("pointerdown", () => {
+  scrollSync.setActivePane("editor");
+});
+editor.addEventListener("wheel", () => {
+  scrollSync.setActivePane("editor");
+});
+editor.addEventListener("focus", () => {
+  scrollSync.setActivePane("editor");
+});
+editor.addEventListener("blur", () => {
+  flushScheduledPreviewUpdate("editor");
+});
+preview.addEventListener("pointerdown", () => {
+  scrollSync.setActivePane("preview");
+});
+preview.addEventListener("wheel", () => {
+  scrollSync.setActivePane("preview");
 });
 
 editor.addEventListener("scroll", () => {
-  if (activePane === editor) {
-    const percentage =
-      editor.scrollTop / (editor.scrollHeight - editor.clientHeight);
-    if (isFinite(percentage)) {
-      preview.scrollTop =
-        percentage * (preview.scrollHeight - preview.clientHeight);
-    }
-  }
+  if (scrollSync.shouldIgnorePaneScroll("editor")) return;
+  scrollSync.scheduleFromEditor("scroll");
 });
 
 preview.addEventListener("scroll", () => {
-  if (activePane === preview) {
-    const percentage =
-      preview.scrollTop / (preview.scrollHeight - preview.clientHeight);
-    if (isFinite(percentage)) {
-      editor.scrollTop =
-        percentage * (editor.scrollHeight - editor.clientHeight);
-    }
-  }
+  if (scrollSync.shouldIgnorePaneScroll("preview")) return;
+  scrollSync.scheduleFromPreview();
 });
 
-// --- Draggable Divider ---
-const divider = document.getElementById("divider");
-const editorPane = document.getElementById("editor-pane");
-const previewWrapper = document.getElementById("preview-wrapper");
-const container = document.querySelector(".container");
+const layoutObserver = new ResizeObserver(() => {
+  applySplitRatio();
+  scheduleDeferredSync();
+});
+layoutObserver.observe(editorHost);
+layoutObserver.observe(previewWrapper);
+layoutObserver.observe(container);
+window.addEventListener("resize", () => {
+  applySplitRatio();
+  scheduleDeferredSync();
+});
+document.addEventListener("preview-style-change", scheduleDeferredSync);
+requestAnimationFrame(() => applySplitRatio());
 
+// --- Draggable Divider ---
 divider.addEventListener("mousedown", (e) => {
   e.preventDefault();
   divider.classList.add("dragging");
   const onMouseMove = (e) => {
-    const rect = container.getBoundingClientRect();
-    const offset = e.clientX - rect.left;
+    if (!workspaceSplit) return;
+    const rect = workspaceSplit.getBoundingClientRect();
     const total = rect.width - divider.offsetWidth;
-    const ratio = Math.max(0.1, Math.min(0.9, offset / rect.width));
-    editorPane.style.flex = "none";
-    previewWrapper.style.flex = "none";
-    editorPane.style.width = `${ratio * total}px`;
-    previewWrapper.style.width = `${(1 - ratio) * total}px`;
+    if (total <= 0) return;
+    const offset = e.clientX - rect.left - divider.offsetWidth / 2;
+    applySplitRatio(offset / total);
+    scheduleDeferredSync();
   };
   const onMouseUp = () => {
     divider.classList.remove("dragging");
     document.removeEventListener("mousemove", onMouseMove);
     document.removeEventListener("mouseup", onMouseUp);
+    localStorage.setItem(SPLIT_RATIO_KEY, String(splitRatio));
+    scheduleDeferredSync();
   };
   document.addEventListener("mousemove", onMouseMove);
   document.addEventListener("mouseup", onMouseUp);
@@ -1470,13 +1917,17 @@ async function openFileFromPath(filePath) {
 }
 
 // --- Listen for file-open events from backend (single-instance) ---
-listen("file-open", (event) => {
+listen("file-open", async (event) => {
+  if (!await confirmDiscard("open")) return;
   openFileFromPath(event.payload);
 });
 
 // --- Startup: restore snapshot if available ---
 async function init() {
+  applySettings(appSettings, { persist: false });
+  await loadInstalledFonts();
   applyTranslations();
+  updateEditorFooter();
   renderHelp();
   loadSavedStyle();
   initPreviewStylePanel();
@@ -1486,7 +1937,7 @@ async function init() {
     getEditor: () => editor,
     getState: () => state,
     openFile: async (filePath) => {
-      if (!await confirmDiscard()) return;
+      if (!await confirmDiscard("open")) return;
       await openFileFromPath(filePath);
     },
     setStatus: (msg) => setStatus(msg),

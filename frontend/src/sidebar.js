@@ -63,9 +63,13 @@ export function toggleSidebar() {
   setSidebarVisible(sidebar.classList.contains("hidden"));
 }
 
-export function updateTOC(markdownText) {
+export function updateTOC(markdownText, delayMs = 200) {
   clearTimeout(tocDebounceTimer);
-  tocDebounceTimer = setTimeout(() => renderTOC(markdownText), 200);
+  if (delayMs <= 0) {
+    renderTOC(markdownText);
+    return;
+  }
+  tocDebounceTimer = setTimeout(() => renderTOC(markdownText), delayMs);
 }
 
 export function addToRecentFiles(filePath) {
@@ -77,6 +81,11 @@ export function addToRecentFiles(filePath) {
   localStorage.setItem(RECENT_KEY, JSON.stringify(recents));
   const recentBody = document.getElementById("recent-section-body");
   if (recentBody) requestAnimationFrame(() => renderRecentBody(recentBody));
+}
+
+export function refreshSidebarTranslations(markdownText = "") {
+  renderFilesPanel();
+  renderTOC(markdownText);
 }
 
 // --- Internal: Files panel ---
@@ -443,11 +452,16 @@ function scrollToHeading(headingText, level, occurrence = 0) {
         if (matchCount === occurrence) {
           editor.focus();
           editor.setSelectionRange(charPos, charPos + line.length);
-          const computedLineHeight = getComputedStyle(editor).lineHeight;
+          const metricsTarget = editor.scrollDOM || editor.dom || document.getElementById("editor");
+          const computedLineHeight = metricsTarget ? getComputedStyle(metricsTarget).lineHeight : "";
           const lineHeight = parseFloat(computedLineHeight) ||
-            parseFloat(getComputedStyle(editor).fontSize) * 1.6;
+            parseFloat(metricsTarget ? getComputedStyle(metricsTarget).fontSize : "16") * 1.6;
           const lineIndex = value.substring(0, charPos).split("\n").length - 1;
-          editor.scrollTop = lineIndex * lineHeight - editor.clientHeight / 3;
+          if (typeof editor.scrollToAbsoluteY === "function") {
+            editor.scrollToAbsoluteY(lineIndex * lineHeight, editor.clientHeight / 3);
+          } else {
+            editor.scrollTop = lineIndex * lineHeight - editor.clientHeight / 3;
+          }
           break;
         }
         matchCount++;

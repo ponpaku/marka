@@ -5,10 +5,13 @@ const dictionaries = {
     "btn.open": "Open",
     "btn.save": "Save",
     "btn.saveAs": "Save As",
+    "settings.open": "Open settings",
     "btn.themeToggle": "Toggle theme",
     "sidebar.toggleTitle": "Toggle Sidebar",
     // editor
     "editor.placeholder": "Type here...",
+    "footer.search": "Search",
+    "footer.charCount": "{0} chars",
     // status
     "status.ready": "Ready",
     "status.opened": "Opened: {0}",
@@ -37,6 +40,8 @@ const dictionaries = {
     "new.confirmTitle": "Discard Changes?",
     "new.confirmMessage": "You have unsaved changes. Discard and create a new file?",
     "new.ok": "Discard and New",
+    "open.confirmMessage": "You have unsaved changes. Discard and open another file?",
+    "open.ok": "Discard and Open",
     "new.cancel": "Cancel",
     // sidebar
     "sidebar.files": "Files",
@@ -168,6 +173,18 @@ const dictionaries = {
     "about.copyUrl": "Copy",
     "about.copied": "Copied!",
     "about.close": "Close",
+    // settings
+    "settings.title": "Settings",
+    "settings.close": "Close",
+    "settings.editor": "Editor",
+    "settings.interface": "Interface",
+    "settings.displayFont": "Display Font",
+    "settings.fontSize": "Font Size",
+    "settings.lineNumbers": "Show line numbers",
+    "settings.lineWrapping": "Enable line wrapping",
+    "settings.language": "UI Language",
+    "settings.languageJapanese": "Japanese",
+    "settings.languageEnglish": "English",
   },
   ja: {
     // header buttons
@@ -175,10 +192,13 @@ const dictionaries = {
     "btn.open": "開く",
     "btn.save": "保存",
     "btn.saveAs": "名前を付けて保存",
+    "settings.open": "設定を開く",
     "btn.themeToggle": "テーマ切替",
     "sidebar.toggleTitle": "サイドバーを切替",
     // editor
     "editor.placeholder": "ここに入力...",
+    "footer.search": "検索",
+    "footer.charCount": "{0} 文字",
     // status
     "status.ready": "準備完了",
     "status.opened": "開きました: {0}",
@@ -207,6 +227,8 @@ const dictionaries = {
     "new.confirmTitle": "変更を破棄しますか？",
     "new.confirmMessage": "未保存の変更があります。破棄して新規作成しますか？",
     "new.ok": "破棄して新規作成",
+    "open.confirmMessage": "未保存の変更があります。破棄して他のファイルを開きますか？",
+    "open.ok": "破棄して開く",
     "new.cancel": "キャンセル",
     // sidebar
     "sidebar.files": "ファイル",
@@ -338,10 +360,45 @@ const dictionaries = {
     "about.copyUrl": "コピー",
     "about.copied": "コピーしました！",
     "about.close": "閉じる",
+    // settings
+    "settings.title": "設定",
+    "settings.close": "閉じる",
+    "settings.editor": "エディタ",
+    "settings.interface": "インターフェース",
+    "settings.displayFont": "表示フォント",
+    "settings.fontSize": "フォントサイズ",
+    "settings.lineNumbers": "行番号を表示",
+    "settings.lineWrapping": "行を折り返す",
+    "settings.language": "UI言語",
+    "settings.languageJapanese": "日本語",
+    "settings.languageEnglish": "英語",
   },
 };
 
 let currentLang = "en";
+
+const codeMirrorPhrases = {
+  ja: {
+    Find: "検索",
+    Replace: "置換",
+    next: "次へ",
+    previous: "前へ",
+    all: "全選択",
+    "match case": "大/小文字",
+    regexp: "正規表現",
+    "by word": "単語一致",
+    replace: "置換",
+    "replace all": "すべて置換",
+    close: "閉じる",
+    "current match": "現在の一致",
+    "on line": "行",
+    "Go to line": "行へ移動",
+    go: "移動",
+    "replaced match on line $": "$ 行目の一致を置換しました",
+    "replaced $ matches": "$ 件を置換しました",
+    "Control character": "制御文字",
+  },
+};
 
 function detectLang() {
   const stored = localStorage.getItem("marka-lang");
@@ -355,6 +412,20 @@ export function getLang() {
   return currentLang;
 }
 
+export function setLang(lang, { persist = true } = {}) {
+  if (!dictionaries[lang]) return currentLang;
+  currentLang = lang;
+  if (persist) {
+    localStorage.setItem("marka-lang", lang);
+  }
+  document.documentElement.lang = lang;
+  return currentLang;
+}
+
+export function getCodeMirrorPhrases() {
+  return codeMirrorPhrases[currentLang] || {};
+}
+
 export function t(key, ...args) {
   const dict = dictionaries[currentLang] || dictionaries.en;
   let str = dict[key] ?? dictionaries.en[key] ?? key;
@@ -365,6 +436,7 @@ export function t(key, ...args) {
 }
 
 export function applyTranslations() {
+  document.documentElement.lang = currentLang;
   document.querySelectorAll("[data-i18n]").forEach((el) => {
     el.textContent = t(el.dataset.i18n);
   });

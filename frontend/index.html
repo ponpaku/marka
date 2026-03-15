@@ -33,6 +33,7 @@
                     <button class="export-option" id="export-print" data-i18n="export.print">Print</button>
                 </div>
             </div>
+            <button id="btn-settings" class="toolbar-icon-btn" data-i18n-title="settings.open" title="Settings">&#9881;</button>
             <button id="theme-toggle" data-i18n-title="btn.themeToggle" title="Toggle theme"></button>
         </div>
     </div>
@@ -96,15 +97,66 @@
         </div>
     </div>
 
-    <div class="container">
-        <div id="editor-pane">
-            <textarea id="editor" data-i18n-placeholder="editor.placeholder" placeholder="Type here..."></textarea>
+    <div id="settings-modal" class="settings-overlay" aria-modal="true" role="dialog">
+        <div class="settings-dialog">
+            <div class="settings-header">
+                <span class="settings-title" data-i18n="settings.title">Settings</span>
+                <button id="settings-close" class="settings-close-btn" data-i18n-title="settings.close" title="Close">&times;</button>
+            </div>
+            <div class="settings-body">
+                <section class="settings-section">
+                    <div class="settings-section-label" data-i18n="settings.editor">Editor</div>
+                    <label class="settings-field">
+                        <span data-i18n="settings.displayFont">Display Font</span>
+                        <select id="settings-display-font" class="settings-select"></select>
+                    </label>
+                    <label class="settings-field">
+                        <span data-i18n="settings.fontSize">Font Size</span>
+                        <div class="settings-font-size-row">
+                            <input type="range" id="settings-font-size" min="12" max="28" step="1">
+                            <output id="settings-font-size-value" for="settings-font-size">16px</output>
+                        </div>
+                    </label>
+                    <label class="settings-checkbox">
+                        <input type="checkbox" id="settings-line-numbers">
+                        <span data-i18n="settings.lineNumbers">Show line numbers</span>
+                    </label>
+                    <label class="settings-checkbox">
+                        <input type="checkbox" id="settings-line-wrapping">
+                        <span data-i18n="settings.lineWrapping">Enable line wrapping</span>
+                    </label>
+                </section>
+                <section class="settings-section">
+                    <div class="settings-section-label" data-i18n="settings.interface">Interface</div>
+                    <label class="settings-field">
+                        <span data-i18n="settings.language">UI Language</span>
+                        <select id="settings-language" class="settings-select">
+                            <option value="ja" data-i18n="settings.languageJapanese">Japanese</option>
+                            <option value="en" data-i18n="settings.languageEnglish">English</option>
+                        </select>
+                    </label>
+                </section>
+            </div>
         </div>
-        <div id="divider"></div>
-        <div id="preview-wrapper">
-            <button id="preview-style-toggle" title="Preview Style">&#x1f3a8;</button>
-            <div id="preview-style-panel" class="psp-panel"></div>
-            <div id="preview-pane"></div>
+    </div>
+
+    <div class="container">
+        <div class="workspace-split">
+            <div id="editor-pane">
+                <div id="editor" aria-label="Markdown editor"></div>
+            </div>
+            <div id="divider"></div>
+            <div id="preview-wrapper">
+                <button id="preview-style-toggle" title="Preview Style">&#x1f3a8;</button>
+                <div id="preview-style-panel" class="psp-panel"></div>
+                <div id="preview-pane"></div>
+            </div>
+        </div>
+        <div id="editor-footer">
+            <div class="editor-footer-actions">
+                <button id="btn-search" class="editor-footer-btn" data-i18n="footer.search">検索</button>
+            </div>
+            <div id="editor-char-count" data-i18n="footer.charCount">0 文字</div>
         </div>
     </div>
 </div>

@@ -54,6 +54,10 @@ let styleEl = null;
 let currentPreset = "default";
 let customCss = "";
 
+function emitPreviewStyleChange() {
+  document.dispatchEvent(new CustomEvent("preview-style-change"));
+}
+
 function getStyleEl() {
   if (!styleEl) {
     styleEl = document.createElement("style");
@@ -65,6 +69,7 @@ function getStyleEl() {
 
 export function applyPreviewStyle(css) {
   getStyleEl().textContent = css;
+  emitPreviewStyleChange();
 }
 
 export function loadSavedStyle() {
@@ -100,6 +105,12 @@ export function initPreviewStylePanel() {
       panel.classList.remove("open");
     }
   });
+}
+
+export function refreshPreviewStylePanel() {
+  const panel = document.getElementById("preview-style-panel");
+  if (!panel) return;
+  renderPanel(panel);
 }
 
 function renderPanel(panel) {
