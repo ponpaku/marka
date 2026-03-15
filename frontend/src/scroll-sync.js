@@ -67,15 +67,23 @@ function getTableWindow(items, index) {
   if (current.kind !== "table_row") {
     return { startIndex: index, endIndex: index };
   }
-  let startIndex = index;
-  let endIndex = index;
-  while (startIndex > 0 && items[startIndex - 1]?.kind === "table_row") {
-    startIndex--;
+
+  let tableStart = index;
+  let tableEnd = index;
+  while (tableStart > 0 && items[tableStart - 1]?.kind === "table_row") {
+    tableStart--;
   }
-  while (endIndex < items.length - 1 && items[endIndex + 1]?.kind === "table_row") {
-    endIndex++;
+  while (tableEnd < items.length - 1 && items[tableEnd + 1]?.kind === "table_row") {
+    tableEnd++;
   }
-  return { startIndex, endIndex };
+
+  // Large tables can have row heights that differ wildly in preview.
+  // Interpolating over the whole table makes the preview appear to stick
+  // and then jump, so we only use the current row and its neighbors.
+  return {
+    startIndex: Math.max(tableStart, index - 1),
+    endIndex: Math.min(tableEnd, index + 1),
+  };
 }
 
 function measurePreviewWindow(preview, items, window) {
