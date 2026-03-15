@@ -1704,6 +1704,33 @@ editor.addEventListener("input", (e) => {
 const divider = document.getElementById("divider");
 const previewWrapper = document.getElementById("preview-wrapper");
 const container = document.querySelector(".container");
+const workspaceSplit = document.querySelector(".workspace-split");
+const SPLIT_RATIO_KEY = "marka-split-ratio";
+
+function clampSplitRatio(value) {
+  return Math.max(0.1, Math.min(0.9, value));
+}
+
+function loadSplitRatio() {
+  const stored = Number.parseFloat(localStorage.getItem(SPLIT_RATIO_KEY) ?? "");
+  if (!Number.isFinite(stored)) return 0.5;
+  return clampSplitRatio(stored);
+}
+
+let splitRatio = loadSplitRatio();
+
+function applySplitRatio(nextRatio = splitRatio) {
+  if (!workspaceSplit) return;
+
+  splitRatio = clampSplitRatio(nextRatio);
+  const totalWidth = workspaceSplit.clientWidth - divider.offsetWidth;
+  if (totalWidth <= 0) return;
+
+  editorPane.style.flex = "none";
+  previewWrapper.style.flex = "none";
+  editorPane.style.width = `${splitRatio * totalWidth}px`;
+  previewWrapper.style.width = `${(1 - splitRatio) * totalWidth}px`;
+}
 
 scrollSync = createScrollSync({
   editor,
@@ -1773,33 +1800,37 @@ preview.addEventListener("scroll", () => {
 });
 
 const layoutObserver = new ResizeObserver(() => {
+  applySplitRatio();
   scheduleDeferredSync();
 });
 layoutObserver.observe(editorHost);
 layoutObserver.observe(previewWrapper);
 layoutObserver.observe(container);
-window.addEventListener("resize", scheduleDeferredSync);
+window.addEventListener("resize", () => {
+  applySplitRatio();
+  scheduleDeferredSync();
+});
 document.addEventListener("preview-style-change", scheduleDeferredSync);
+requestAnimationFrame(() => applySplitRatio());
 
 // --- Draggable Divider ---
 divider.addEventListener("mousedown", (e) => {
   e.preventDefault();
   divider.classList.add("dragging");
   const onMouseMove = (e) => {
-    const rect = container.getBoundingClientRect();
-    const offset = e.clientX - rect.left;
+    if (!workspaceSplit) return;
+    const rect = workspaceSplit.getBoundingClientRect();
     const total = rect.width - divider.offsetWidth;
-    const ratio = Math.max(0.1, Math.min(0.9, offset / rect.width));
-    editorPane.style.flex = "none";
-    previewWrapper.style.flex = "none";
-    editorPane.style.width = `${ratio * total}px`;
-    previewWrapper.style.width = `${(1 - ratio) * total}px`;
+    if (total <= 0) return;
+    const offset = e.clientX - rect.left - divider.offsetWidth / 2;
+    applySplitRatio(offset / total);
     scheduleDeferredSync();
   };
   const onMouseUp = () => {
     divider.classList.remove("dragging");
     document.removeEventListener("mousemove", onMouseMove);
     document.removeEventListener("mouseup", onMouseUp);
+    localStorage.setItem(SPLIT_RATIO_KEY, String(splitRatio));
     scheduleDeferredSync();
   };
   document.addEventListener("mousemove", onMouseMove);
